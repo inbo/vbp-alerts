@@ -1,46 +1,190 @@
-/*
+/**
  *   Copyright (c) 2024.  Atlas of Living Australia
  *   All Rights Reserved.
- *   The contents of this file are subject to the Mozilla Public
- *   License Version 1.1 (the "License"); you may not use this file
- *   except in compliance with the License. You may obtain a copy of
- *   the License at http://www.mozilla.org/MPL/
- *   Software distributed under the License is distributed on an "AS
- *   IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or
- *   implied. See the License for the specific language governing
- *   rights and limitations under the License.
+ *   @author Qifeng Bai
  *
  */
 
-package au.org.ala.alerts;
+package au.org.ala.alerts
 
-import com.jayway.jsonpath.JsonPath
+import au.org.ala.ws.service.WebService;
 import grails.converters.JSON
-import grails.gorm.transactions.Transactional
-import org.apache.commons.lang.time.DateUtils
+import grails.util.Holders
+import grails.web.mapping.LinkGenerator
+import org.apache.commons.lang3.time.DateUtils
 import org.apache.http.entity.ContentType
+
 import java.text.SimpleDateFormat
 
 /**
  * Process Biosecurity alerts
  */
 class BiosecurityService {
-    def notificationService
-    def queryService
-    def grailsApplication
-    def emailService
-    def webService
-    def diffService
-    def biosecurityCSVService
+    String EMAIL_TEMPLATE = '/email/biosecurity'
+    LinkGenerator grailsLinkGenerator
+    def notificationService, queryService, userService, emailService,diffService
+    def grailsApplication, messageSource
+    WebService webService
+    BiosecurityLocalCSVService biosecurityLocalCSVService
+    BiosecurityS3CSVService biosecurityS3CSVService
+    def sessionFactory
+    def siteLocale = new Locale.Builder().setLanguageTag(Holders.config.siteDefaultLanguage as String).build()
 
-    def biosecurityAlerts() {
+
+    def run() {
         def results = []
-        queryService.getALLBiosecurityQuery().each { Query query ->
+        def queries = []
+        Query.withTransaction {
+            queries = Query.findAllByEmailTemplate(EMAIL_TEMPLATE)
+        }
+
+        queries.each { Query query ->
             def result = triggerBiosecuritySubscription(query)
             results.add(result)
         }
+        def errorLogs = results.findAll { it.status != 0 }
+        if (errorLogs.size() > 0) {
+            def message = [:]
+            message["title"] = "Biosecurity alerts completed with ${errorLogs.size()} error(s) at ${new Date()}"
+            // A yellow warning sign emoji
+            message["subject"] = "\u26A0\uFE0F "+ message["title"]
+            message["logs"] = errorLogs
+            emailService.notifyMonitoringTeam("BIOSECURITY", message)
+        } else {
+            def message = [:]
+            message["title"] = "${results.size()} Biosecurity alerts completed successfully at ${new Date()}"
+            def newRecordsCount = results.sum { it.hasNewRecords ? 1 : 0 }
+            if (newRecordsCount > 0) {
+                message["subtitle"] = "${newRecordsCount} alert(s) found new records."
+            } else {
+                message["subtitle"] = "No new records were found."
+            }
+            // A green check mark emoji
+            message["subject"] = "\u2705 "+ message["title"]
+            emailService.notifyMonitoringTeam("BIOSECURITY", message)
+        }
+
         return results
     }
+
+    def dryRun(Date since) {
+        def results = []
+        def queries = []
+        def user = userService.getUser()
+
+        Query.withTransaction {
+            queries = Query.findAllByEmailTemplate(EMAIL_TEMPLATE)
+        }
+
+        queries.each { Query query ->
+            def result = triggerBiosecuritySubscription(query, since, true)
+            results.add(result)
+        }
+        def errorLogs = results.findAll { it.status != 0 }
+        if (errorLogs.size() > 0) {
+            def message = [:]
+            message["title"] = "[DryRun]Biosecurity alerts completed with ${errorLogs.size()} error(s) at ${new Date()}"
+            // A yellow warning sign emoji
+            message["subject"] = "\u26A0\uFE0F "+ message["title"]
+            message["logs"] = errorLogs
+            emailService.notifyMonitoringTeam("BIOSECURITY", message,[user.email])
+        } else {
+            def message = [:]
+            message["title"] = "[DryRun] ${results.size()} Biosecurity alerts completed successfully at ${new Date()}"
+            // A green check mark emoji
+            message["subject"] = "\u2705 "+ message["title"]
+            def newRecordsCount = results.sum { it.hasNewRecords ? 1 : 0 }
+            if (newRecordsCount > 0) {
+                message["subtitle"] = "${newRecordsCount} alert(s) found new records."
+            } else {
+                message["subtitle"] = "No new records were found."
+            }
+            emailService.notifyMonitoringTeam("BIOSECURITY", message,[user.email])
+        }
+
+        return results
+    }
+
+    // get biosecurity queries with offset and limit
+    def list(int offset,int limit) {
+        def criteria = Query.createCriteria()
+        List<Query> queries = criteria.list(max: limit, offset: offset) {
+            eq('emailTemplate', EMAIL_TEMPLATE)
+            order('id', 'desc')
+        }
+
+        def results = queries.collect{ query ->
+            // Biosecurity queries are weekly ONLY, so filter out the other frequencies
+            def filteredQueryResults = query.queryResults.findAll { it.frequency?.name == 'weekly' }
+            // Get the last QueryResult from the filtered list, if it exists
+            QueryResult qr = !filteredQueryResults.isEmpty() ? filteredQueryResults.first() : null
+            query
+        }
+
+        return results.toList()
+    }
+
+    // return the number of biosecurity queries
+    def count() {
+        int count = 0
+        Query.withTransaction {
+            count = Query.countByEmailTemplate(EMAIL_TEMPLATE)
+        }
+        return count
+    }
+
+
+    /**
+     * NOTE: Biosecurity query code does not use the queryPath stored in the database
+     * @param listid
+     * @return
+     */
+
+    Query buildQuery(String listid) {
+        def sList = queryService.getSpeciesListName(listid)
+        String speciesListName = sList.name
+        //differentiate non-authoritative / authoritative list
+        //demo purpose only, the queryPath is not used in Biosecurity query process
+        String queryPathForUITemplate = grailsApplication.config.getProperty("biosecurity.query.template.nonAuthoritativeList", String, "/occurrences/search?q=species_list:___LISTIDPARAM___&fq=decade:2020&fq=country:Australia&fq=first_loaded_date:"+"[___DATEPARAM___ TO *]".encodeAsURL()+"&fq=occurrence_date:"+"[___LASTYEARPARAM___ TO *]".encodeAsURL() +"&sort=first_loaded_date&dir=desc&disableAllQualityFilters=true")
+        if (sList.isAuthoritative) {
+            queryPathForUITemplate = grailsApplication.config.getProperty("biosecurity.query.template.authoritativeList", String, "/occurrences/search?q=species_list_uid:___LISTIDPARAM___&fq=decade:2020&fq=country:Australia&fq=first_loaded_date:"+"[___DATEPARAM___ TO *]".encodeAsURL()+"&fq=occurrence_date:"+"[___LASTYEARPARAM___ TO *]".encodeAsURL()+"&sort=first_loaded_date&dir=desc&disableAllQualityFilters=true")
+        }
+
+        String queryPathForUI = queryPathForUITemplate.replaceAll("___LISTIDPARAM___", listid)
+
+        new Query([
+                //Not used
+                baseUrl       : grailsApplication.config.biocacheService.baseURL,
+                baseUrlForUI  : grailsApplication.config.biocache.baseURL,
+                name          : messageSource.getMessage("query.biosecurity.title", null, siteLocale) + ' ' + speciesListName,
+                resourceName  : grailsApplication.config.mail.details.defaultResourceName,
+                updateMessage : 'more.biosecurity.update.message',
+                description   : messageSource.getMessage("query.biosecurity.descr", null, siteLocale) + ' ' + speciesListName,
+                //Not used
+                queryPath     : queryPathForUI + '&pageSize=20&facets=basis_of_record',
+                //Not used
+                queryPathForUI: queryPathForUI,
+                dateFormat    : """yyyy-MM-dd'T'HH:mm:ss'Z'""",
+                emailTemplate : '/email/biosecurity',
+                recordJsonPath: '\$.occurrences[*]',
+                idJsonPath    : 'uuid',
+                custom        : true
+        ])
+    }
+
+    /**
+     * Subscribe a user to a species list ID.
+     * If the query for this species list does not exist, it will be created.
+     * @param user
+     * @param listid
+     * @return
+     */
+    def subscribeToSpeciesList(User user, String listid) {
+        Query query = buildQuery(listid)
+        query = queryService.addUserToQuery(query, user, true, true)
+        return query
+    }
+
 
     /**
      *
@@ -54,7 +198,7 @@ class BiosecurityService {
      */
     def triggerBiosecuritySubscription(Query query) {
         //If has not been checked before, then set the lastChecked to 7 days before
-        Date lastChecked = query.lastChecked ?: DateUtils.addDays(new Date(), -1 * grailsApplication.config.getProperty("biosecurity.legacy.firstLoadedDateAge", Integer, 7))
+        Date lastChecked = queryService.getLastCheckedDate(query) ?: DateUtils.addDays(new Date(), -1 * grailsApplication.config.getProperty("biosecurity.legacy.firstLoadedDateAge", Integer, 7))
         triggerBiosecuritySubscription(query, lastChecked)
     }
 
@@ -63,43 +207,44 @@ class BiosecurityService {
      *
      * @param query
      * @param since The local date to check the subscription since
+     * @param dryRun If true, it will not send emails and update the database, but will still process the query and return the results
      */
-    @Transactional
-    def triggerBiosecuritySubscription(Query query, Date since) {
+    def triggerBiosecuritySubscription(Query query, Date since, boolean dryRun = false) {
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'")
         Date now = new Date()
 
         def message = "Checking records of ${query?.id}. ${query?.name} from ${sdf.format(since)} to ${sdf.format(now)}."
         log.info(message)
-        def result = [status: 1, message: message, logs: [message]]
+        def result = [status: 1, message: message, logs: [ "Processing at ${sdf.format(now)} ", message]]
 
-        def frequency = 'weekly'
-        QueryResult qr = notificationService.getQueryResult(query, Frequency.findByName(frequency))
+        def frequency = queryService.getFrequency("weekly")
+        QueryResult qr = notificationService.getQueryResult(query, frequency)
+        def recipients = queryService.getRecipients(query.id, "weekly")
 
         try {
             def processedJson = processQueryBiosecurity(query, since, now)
-
-            def recordsFound = JsonPath.read(processedJson, '$.totalRecords')
-            result.logs << "${recordsFound} record(s) found since ${sdf.format(since)}."
-
             // set check time
             qr.previousCheck = since
-
             // store the last result from the webservice call
             qr.previousResult = qr.lastResult
             qr.lastResult = qr.compress(processedJson)
             qr.lastChecked = now
-            /**
-             * refreshProperties has to be called before hasChanged
-             */
-            notificationService.refreshProperties(qr, processedJson)
-            qr.hasChanged = diffService.hasChanged(qr)
-            qr.newLog("")
 
-            log.debug("[QUERY " + query.id + "] Has changed?: " + qr.hasChanged)
-            if (qr.hasChanged) {
+            def newRecords = diffService.getNewRecords(qr)
+            fetchExtraOccurrenceInfo(newRecords)
+            def countsByDataProvider = countByDataProvider(newRecords)
+            qr.newRecords = newRecords
+            qr.totalRecords = qr.newRecords?.size()
+
+            if ( qr.totalRecords > 0) {
+                qr.hasChanged = true
                 qr.lastChanged = since
+            } else {
+                qr.hasChanged = false
             }
+            qr.succeeded = true
+            log.debug("[QUERY " + query.id + "] Has changed?: " + qr.hasChanged)
+            result.logs << "${qr.totalRecords} record(s) found since ${sdf.format(since)}."
 
             def todayNDaysAgo = DateUtils.addDays(since, -1 * grailsApplication.config.getProperty("biosecurity.legacy.eventDateAge", Integer, 150))
             def firstLoadedDate = sdf.format(since)
@@ -110,46 +255,54 @@ class BiosecurityService {
             String modifiedPath = queryPath.replaceAll('___DATEPARAM___', firstLoadedDate).replaceAll('___LASTYEARPARAM___', occurrenceDate)
             qr.queryUrlUIUsed = query.baseUrlForUI + modifiedPath
 
+            result["hasNewRecords"] = qr.hasChanged
             if (qr.hasChanged) {
-                biosecurityCSVService.generateAuditCSV(qr)
-                def users = queryService.getSubscribers(query.id)
-                def recipients = users.collect { user ->
-                        def notificationUnsubToken = user.notifications.find { it.query.id == query.id }?.unsubscribeToken
-                        [email: user.email, userUnsubToken: user.unsubscribeToken, notificationUnsubToken: notificationUnsubToken]
-                }
 
-                def emails = recipients.collect { it.email }
-                result.logs << "Sending emails to ${emails.size() <= 2 ? emails.join('; ') : emails.take(2).join('; ') + ' and ' + (emails.size() - 2) + ' other users.'}"
+                if (dryRun) {
+                    //only send email to the user who triggered the dry run, not to all recipients
+                    def user = userService.getUser()
+                    def recipient =
+                        [email: user.email, userUnsubToken: user.unsubscribeToken, notificationUnsubToken: "INVALID"]
+                    emailService.sendGroupNotification(qr, frequency, [recipient],[countByDataProvider: countsByDataProvider])
+                } else {
+                    def csvService =  getCsvService()
+                    csvService.generateAuditCSV(qr)
+                    if (recipients) {
+                        def emails = recipients.collect { it.email }
+                        result.logs << "Sending emails to ${emails.size() <= 2 ? emails.join('; ') : emails.take(2).join('; ') + ' and ' + (emails.size() - 2) + ' other users.'}"
 
-                if (!users.isEmpty()) {
-                    def emailStatus = emailService.sendGroupNotification(qr, Frequency.findByName('weekly'), recipients)
-
-                    result.status = emailStatus.status
-                    result.logs << emailStatus.message
+                        def emailStatus = emailService.sendGroupNotification(qr, frequency, recipients,[countByDataProvider: countsByDataProvider])
+                        result.status = emailStatus.status
+                        result.logs << emailStatus.message
+                    }
                 }
             } else {
-                result.logs << "No emails will be sent because no changes were detected."
+                result.logs << "No emails will be sent because no changes were detected or dry run is enabled."
             }
 
             result.logs << "Completed!"
-            result.message = "Completion of Subscription check: ${query?.id}. ${query?.name}."
+            result.message = "Completion of Subscription: [${query?.id}]. ${query?.name}."
             result.status = 0
-
         } catch (Exception e) {
-            log.error("Failed to trigger subscription [ ${query?.id}  ${query?.name} ]", e)
-            result = [status: 1, message: "Failed to trigger subscription [ ${query?.id}  ${query?.name} ]" + e.message]
+            qr.succeeded = false
+            String error = "Error: Failed to trigger subscription [ ${query?.id}  ${query?.name} ]"
+            log.error(error + " - " +e.message)
+            result.status = 1
+            result.message = "${query?.name}"
+            result.url = grailsLinkGenerator.link( controller: 'admin', action: 'index', namespace: 'biosecurity',params: [id: query?.id], absolute: true)
+            result.logs << "Failed: ${e.message}"
         } finally {
-            log.info("[Status: ${result.status}] - ${result.message}")
-
-            qr.addLog(result.logs.join("\n"))
-
-            if (!qr.save(validate: true, flush: true,failOnError: true)){
-                qr.errors.allErrors.each {
-                    log.error(it)
+            log.info(result.message)
+            qr.newLogs(result.logs)
+            if (dryRun) {
+                sessionFactory.currentSession.evict(qr)
+            } else {
+                QueryResult.withTransaction {
+                    qr.save(flush: true, failOnError: true)
                 }
             }
-            return result
         }
+        return result
     }
 
     def processQueryBiosecurity(Query query, Date since, Date to) {
@@ -167,12 +320,11 @@ class BiosecurityService {
                 def headers = ["User-Agent": "${grailsApplication.config.getProperty("customUserAgent", "alerts")}"]
                 def speciesList = webService.get(url, [:], ContentType.APPLICATION_JSON, true, false, headers)
                 if (speciesList.statusCode != 200 && speciesList.statusCode != 201) {
-                    log.error("Failed to access: " + url)
                     log.error("Error: " + speciesList.error)
-                    break;
+                    throw new RuntimeException("Failed to process the Species List: ${speciesList.statusCode} " + url)
                 }
                 speciesList.resp?.each { listItem ->
-                    processListItemBiosecurity(occurrences, listItem, since, to)
+                    processListItemBiosecurity(occurrences, query, listItem, since, to)
                 }
 
                 repeat = (max == speciesList.resp?.size())
@@ -180,7 +332,7 @@ class BiosecurityService {
 
             }
             //Extra infos for CSV
-            def finalResults =  occurrences.values().collect { record ->
+            def finalResults = occurrences.values().collect { record ->
                 record["dateSent"] = new SimpleDateFormat("dd/MM/yyyy").format(to)
                 record["listName"] = query.name
                 record["listId"] = drId
@@ -188,21 +340,21 @@ class BiosecurityService {
                 return record
             }
 
-            return ([occurrences: finalResults.sort { a, b -> a.eventDate <=> b.eventDate}, totalRecords: finalResults.size()] as JSON).toString()
+            return ([occurrences: finalResults.sort { a, b -> a.eventDate <=> b.eventDate }, totalRecords: finalResults.size()] as JSON).toString()
         } else {
-            return ([occurrences: [], totalRecords: 0] as JSON).toString()
+            return ([status: false, error: 'No species list Id provided', occurrences: [], totalRecords: 0] as JSON).toString()
         }
     }
 
     /**
      * Date will be converted to UTC
      *
-     * @param occurrences
+     * @param occurrences a reference to the map of occurrences
      * @param listItem
      * @param since
      * @return
      */
-    def processListItemBiosecurity(def occurrences, def listItem, Date since, Date to) {
+    def processListItemBiosecurity(def occurrences, def query, def listItem, Date since, Date to) {
         def names = listItem.kvpValues.find { it.key == 'synonyms' }?.value?.split(',') as List ?: []
         names.add(listItem.name)
 
@@ -235,50 +387,53 @@ class BiosecurityService {
 
             def searchTerm = 'q=' + URLEncoder.encode("(" + searchTerms.join(") OR (") + ")")
 
-            def url = grailsApplication.config.getProperty('biocacheService.baseURL') + '/occurrences/search?' + searchTerm + fq + legacyFq + dateRange + firstLoadedDate + "&pageSize=10000"
-            log.debug("URL: " + url)
+            int pageSize = grailsApplication.config.biocacheService.pageSize as int
+            String baseUrl = "${query.baseUrl}/occurrences/search?${searchTerm + fq + legacyFq + dateRange + firstLoadedDate}&pageSize=${pageSize}"
+            String userAgent = grailsApplication.config.getProperty("customUserAgent", "alerts")
 
             try {
-                def get = JSON.parse(new URL(url).openConnection().with { conn ->
-                    conn.setRequestProperty("User-Agent", grailsApplication.config.getProperty("customUserAgent", "alerts"))
-                    conn.inputStream.text
-                })
-                get?.occurrences?.each { occurrence ->
-                    occurrences[occurrence.uuid] = occurrence
-                    //extra info should be added here
-                    occurrence['providedName'] = name
-                    occurrence['occurrenceLink'] = grailsApplication.config.getProperty('biocache.baseURL') + '/occurrences/' + occurrence.uuid
-                    //occurrence['fq']= searchTerm + fq + legacyFq
-                    if (listItem.kvpValues?.size()>0) {
-                        //Do not join, let CSV generate handle it
-                        occurrence['kvs'] = listItem.kvpValues.collect { kv -> "${kv.key}:${kv.value}" }
-                        occurrence['fq'] = listItem.kvpValues?.find { it.key == 'fq' }?.value
+                int pageOffset = 0
+                int totalRecords = -1   // unknown until first response
+
+                while (totalRecords == -1 || pageOffset < totalRecords) {
+                    def url = baseUrl + "&start=${pageOffset}"
+                    log.debug("URL (offset=${pageOffset}): " + url)
+
+                    def get = JSON.parse(new URL(url).openConnection().with { conn ->
+                        conn.setRequestProperty("User-Agent", userAgent)
+                        conn.inputStream.text
+                    })
+
+                    // Capture total on first page
+                    if (totalRecords == -1) {
+                        totalRecords = (get?.totalRecords as Integer) ?: 0
+                        log.debug("Biosecurity pagination: totalRecords=${totalRecords}, pageSize=${pageSize} for name='${name}'")
+                        if (totalRecords == 0) break
                     }
-                    fetchExtraInfo(occurrence.uuid, occurrence)
+
+                    def page = get?.occurrences ?: []
+                    if (!page) break  // guard against empty page
+
+                    page.each { occurrence ->
+                        occurrences[occurrence.uuid] = occurrence
+                        occurrence['providedName'] = name
+                        occurrence['occurrenceLink'] = "${grailsApplication.config.getProperty('biocache.baseURL')}/occurrences/${occurrence.uuid}"
+                        if (listItem.kvpValues?.size() > 0) {
+                            // Do not join, let CSV generate handle it
+                            occurrence['kvs'] = listItem.kvpValues.collect { kv -> "${kv.key}:${kv.value}" }
+                            occurrence['fq'] = listItem.kvpValues?.find { it.key == 'fq' }?.value
+                        }
+                    }
+
+                    pageOffset += pageSize
                 }
             } catch (Exception e) {
-                log.error("failed to get occurrences at URL: " + url)
-                log.error(e.message)
+                log.error("Biosecurity: ${e.message}")
+                throw new Exception("Biosecurity: failed to process occurrences: ${baseUrl}")
             }
         }
     }
 
-    def fetchExtraInfo(def uuid, def occurrence) {
-        try {
-            def url = grailsApplication.config.getProperty('biocacheService.baseURL') + '/occurrences/' + uuid
-            def record = JSON.parse(new URL(url).openConnection().with { conn ->
-                conn.setRequestProperty("User-Agent", grailsApplication.config.getProperty("customUserAgent", "alerts"))
-                conn.inputStream.text
-            })
-            occurrence['firstLoaded'] = record.raw?.firstLoaded
-            //Do not join, let CSV generate handle it
-            occurrence['cl'] = record.processed?.cl?.collect { "${it.key}:${it.value}" }
-
-        } catch (Exception e) {
-            log.error("failed to get extra info for uuid: " + uuid)
-            log.error(e.message)
-        }
-    }
 
     def buildFq(def it) {
         def fqValue = it.kvpValues?.find { it.key == 'fq' }?.value
@@ -335,6 +490,84 @@ class BiosecurityService {
         }
 
         fq
+    }
+
+    //Batch Query Biocache (Using qid) to collect extra info
+    //Those extra info are now stored in CSV file and the Emails
+    //e.g. first loaded date, lga layerID, lga name etc
+    //
+    def fetchExtraOccurrenceInfo(def records) {
+        String layerId = grailsApplication.config.getProperty('biosecurity.lga', 'cl11170')
+        String qidUrl = grailsApplication.config.getProperty('biocacheService.baseURL') + '/qid'
+
+        int limits = grailsApplication.config.biocacheService.pageSize
+        records.collate(limits).each {batch ->
+            def ids = batch.collect {it.uuid}
+            def query = ids.collect { "id:${it}" }.join(" OR ")
+            def qidResp = webService.post(
+                    qidUrl,
+                    ["q": query],
+                    [:],
+                    ContentType.APPLICATION_FORM_URLENCODED
+            )
+
+            if (qidResp.statusCode == 200) {
+                def qid = qidResp.resp?.keySet()?.iterator()?.next()
+                if (qid) {
+                    def occurrenceUrl = grailsApplication.config.getProperty('biocacheService.baseURL') + "/occurrences/search?q=qid:${qid}&pageSize=${limits}&fl=id,firstLoadedDate,${layerId}"
+                    def occurrencesResp = webService.get(occurrenceUrl)
+                    //e.g.
+                    //{
+                    //    uuid: "d8b1bd1a-98b6-494d-91c0-f0a4aa636d30",
+                    //    otherProperties: {
+                    //        firstLoadedDate: "2025-11-13T03:29:22.089+00:00",
+                    //        cl11170: "Western Downs"
+                    //    }
+                    //}
+                    if (occurrencesResp.statusCode == 200) {
+                        def occurrences = occurrencesResp.resp?["occurrences"]
+                        def occMap = occurrences.collectEntries { occ ->
+                            [(occ.uuid): occ]
+                        }
+
+                        //Update each record only if a matching occurrence exists
+                        batch.each { record ->
+                            def occ = occMap[record.uuid]
+                            if (occ) {
+                                record['lgaLayer'] = layerId
+                                record['lga'] = occ.otherProperties?[layerId] ?: ""
+                                record['firstLoadedDate'] = occ.otherProperties?.firstLoadedDate
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Group the occurrence records by their data provider and count them.
+     *
+     * @param records the occurrence records
+     * @return a map of [dataProvider : count], sorted by dataProvider name in descending order
+     */
+    def countByDataProvider(def records) {
+        if (!records) {
+            return [:]
+        }
+        //sort the records by dataProviderName, dataProvider, or dataResourceName (in that order), and group them by the same criteria
+        records.sort { rec ->
+            (rec?.dataProviderName ?: rec?.dataProvider ?: rec?.dataResourceName ?: 'Unknown').toString()
+        }
+        records.groupBy { rec ->
+            (rec?.dataProviderName ?: rec?.dataProvider ?: rec?.dataResourceName ?: 'Unknown').toString()
+        }.collectEntries { provider, group ->
+            [(provider): group.size()]
+        }.sort { a, b -> b.key <=> a.key }
+    }
+
+    private def getCsvService() {
+        return  grailsApplication.config.getProperty('biosecurity.csv.s3.enabled', Boolean, false) ? biosecurityS3CSVService : biosecurityLocalCSVService
     }
 
 }

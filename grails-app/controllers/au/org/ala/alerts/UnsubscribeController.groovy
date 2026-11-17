@@ -1,7 +1,7 @@
 package au.org.ala.alerts
 
 import grails.gorm.transactions.Transactional
-import io.micronaut.http.HttpStatus
+import org.springframework.http.HttpStatus
 
 
 class UnsubscribeController {
@@ -16,7 +16,7 @@ class UnsubscribeController {
         Map userAndNotifications = findUserAndNotificationsForToken(params.token)
 
         if (!userAndNotifications?.user) {
-            response.status = HttpStatus.BAD_REQUEST.code
+            response.status = HttpStatus.BAD_REQUEST.value()
             flash.message = message(code: 'email.unsubscribe.fail.alreadyunsubscribed', default: 'Unable to unsubscribe. You may have already unsubscribed.')
             render view: '../error'
         } else {
@@ -29,7 +29,7 @@ class UnsubscribeController {
         Map userAndNotifications = findUserAndNotificationsForToken(params.token)
 
         if (!userAndNotifications?.user) {
-            response.status = HttpStatus.BAD_REQUEST.code
+            response.status = HttpStatus.BAD_REQUEST.value()
             flash.message = message(code: 'email.unsubscribe.fail.alreadyunsubscribed', default: 'Unable to unsubscribe. You may have already unsubscribed.')
             render view: '../error'
         } else {
@@ -40,12 +40,31 @@ class UnsubscribeController {
                 userAndNotifications.user.save(flush: true)
 
                 // for my annotation, we also need to delete the query and query result
-                String myAnnotationQueryPath = queryService.constructMyAnnotationQueryPath(userAndNotifications.user.userId)
-                if (userAndNotifications.notifications.any { it.query.queryPath == myAnnotationQueryPath }) {
-                    notificationService.unsubscribeMyAnnotation(userAndNotifications.user)
-                }
+                notificationService.unsubscribeMyAnnotation(userAndNotifications.user)
+
                 render view: "unsubscribed"
             }
+        }
+    }
+
+
+    def disable() {
+        Map userAndNotifications = findUserAndNotificationsForToken(params.token)
+
+        if (!userAndNotifications?.user) {
+            response.status = HttpStatus.BAD_REQUEST.value()
+            flash.message = message(code: 'email.unsubscribe.fail.alreadyunsubscribed', default: 'Unable to unsubscribe. You may have already unsubscribed.')
+            render view: '../error'
+        } else {
+            if (userAndNotifications.notifications) {
+                Notification.withTransaction {
+                    userAndNotifications.notifications.each { notification ->
+                        notification.enabled = false
+                        notification.save()
+                    }
+                }
+            }
+            redirect(controller: "notification", action: 'myAlerts')
         }
     }
 

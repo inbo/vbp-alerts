@@ -24,7 +24,7 @@ class ImageService {
     /*
     * Collect the new updated images
     */
-    def diff(def records) {
+    def postProcess(def records) {
         def groupedByDataResource = records.groupBy { it.dataResourceUid }
 
         String[] drIds = records.collect { it.dataResourceUid }
@@ -33,10 +33,12 @@ class ImageService {
         def dataResourceInfos = collectionService.findResourceByUids(collectionUrl, drIds)
         drIds.each { id ->
             def dataResourceInfo = dataResourceInfos[id]
-            groupedByDataResource[id].each { record ->
-                record["dataResourceInfo"] = [:]
-                record["dataResourceInfo"].lastUpdated = dataResourceInfo.lastUpdated
-                record["dataResourceInfo"].alaPublicUrl = dataResourceInfo.alaPublicUrl
+            if (dataResourceInfo) {
+                groupedByDataResource[id].each { record ->
+                    record["dataResourceInfo"] = [:]
+                    record["dataResourceInfo"].lastUpdated = dataResourceInfo.lastUpdated
+                    record["dataResourceInfo"].alaPublicUrl = dataResourceInfo.alaPublicUrl
+                }
             }
         }
         return groupedByDataResource

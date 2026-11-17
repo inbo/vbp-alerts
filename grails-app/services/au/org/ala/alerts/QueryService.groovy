@@ -2,7 +2,6 @@ package au.org.ala.alerts
 
 import grails.gorm.transactions.NotTransactional
 import grails.util.Holders
-import groovy.sql.Sql
 import org.apache.http.entity.ContentType
 import org.springframework.dao.DataIntegrityViolationException
 import grails.gorm.transactions.Transactional
@@ -10,13 +9,24 @@ import grails.gorm.transactions.Transactional
 
 class QueryService {
 
-    def serviceMethod() {}
-    def grailsApplication, notificationService, alertsWebService, webService
-    def messageSource, dataSource
+    def grailsApplication, notificationService, webService
+    def messageSource
     def siteLocale = new Locale.Builder().setLanguageTag(Holders.config.siteDefaultLanguage as String).build()
 
-    def get(id){
-        Query.get(id)
+    def get(long id){
+        Query query = Query.createCriteria().get {
+            eq('id', id)
+            notifications {
+                eq('enabled', true)
+            }
+        }
+        query
+    }
+
+    def getFrequency(String name) {
+        Frequency.withTransaction {
+           return Frequency.findByName(name)
+        }
     }
 
     Notification getNotificationForUser(Query query, User user) {
@@ -101,6 +111,7 @@ class QueryService {
     }
 
     /**
+     * duplicate with wipe()
      * Validate the constraints, cannot delete
      * @param queryInstance
      * @return
@@ -145,35 +156,65 @@ class QueryService {
         [OrphanQuery: toBeRemoved.size(), OrphanNotification: ophanedNotifications]
     }
 
-    // return true if a new query is created, otherwise return false
-    @Transactional
-    boolean createQueryForUserIfNotExists(Query newQuery, User user, boolean setPropertyPath = true) {
-        boolean newQueryCreated = false
-        //find the query
-        Query retrievedQuery = Query.findByBaseUrlAndQueryPath(newQuery.baseUrl, newQuery.queryPath)
-        if (retrievedQuery == null) {
-            log.debug("Query does not exist....")
-            //save the query
-            newQuery.save(flush: true)
-            newQueryCreated = true
-            if (setPropertyPath) {
-                PropertyPath totalRecordPP = new PropertyPath([name: "totalRecords", jsonPath: "totalRecords", query: newQuery, fireWhenNotZero: true])
-                PropertyPath lastLoadedPP = new PropertyPath([name: "last_loaded_record", jsonPath: "occurrences[0].uuid", query: newQuery])
-                newQuery.propertyPaths.add(totalRecordPP)
-                newQuery.propertyPaths.add(lastLoadedPP)
-            }
+    /**
+     * Legacy support for other queries creation
+     * @obsolete replaced with addUserToQuery
+     * @param newQuery
+     * @param user
+     * @param setPropertyPath
+     * @param enabled
+     * @return
+     */
+    boolean createQueryForUserIfNotExists(Query newQuery, User user, boolean setPropertyPath = true, boolean enabled = true) {
+      def successOne = addUserToQuery(newQuery, user, setPropertyPath, enabled)
+        if (successOne && successOne.id) {
+            return true
         } else {
-            newQuery = retrievedQuery
+            return false
         }
-        //does the notification already exist?
-        def exists = Notification.findByQueryAndUser(newQuery, user)
-        if (!exists) {
-            Notification n = new Notification([query: newQuery, user: user])
-            newQuery.notifications.add(n)
-        }
+    }
 
-        newQuery.save(validate: true, flush: true)
-        newQueryCreated
+    /**
+     * The method createQueryForUserIfNotExists is used in My Annotations, biosecurity alerts creation.
+     * It is not clear if this method is needed for those cases.
+     *
+     * Add a user to a query, creating the query if it does not exist.
+     *
+     * @param user
+     * @param setPropertyPath
+     * @param enabled
+     * @return Query object, which may be a new query or an existing one.
+     */
+    Query addUserToQuery(Query newQuery, User user, boolean setPropertyPath = true, boolean enabled = false) {
+        Query.withTransaction {
+            Query retrievedQuery = Query.findByBaseUrlAndQueryPath(newQuery.baseUrl, newQuery.queryPath)
+            if (retrievedQuery == null) {
+                log.debug("Query does not exist....")
+                if (setPropertyPath) {
+                    PropertyPath totalRecordPP = new PropertyPath([name: "totalRecords", jsonPath: "totalRecords", query: newQuery, fireWhenNotZero: true])
+                    PropertyPath lastLoadedPP = new PropertyPath([name: "last_loaded_record", jsonPath: "occurrences[0].uuid", query: newQuery])
+                    newQuery.propertyPaths.add(totalRecordPP)
+                    newQuery.propertyPaths.add(lastLoadedPP)
+                }
+                // Persist the query first so it gets an id, enabling child objects to reference it
+                newQuery.save()
+                Notification n = new Notification([query: newQuery, user: user, enabled: enabled])
+                newQuery.notifications.add(n)
+            } else {
+                newQuery = retrievedQuery
+                log.debug("Query already exists...." + retrievedQuery.id)
+                //does a notification exist???
+                Notification n = Notification.findByQueryAndUser(retrievedQuery, user)
+                if (n == null) {
+                    log.debug("Notification for this user DOES NOT exist...." + user)
+                    n = new Notification([query: retrievedQuery, user: user, enabled: enabled])
+                    retrievedQuery.notifications.add(n)
+                } else {
+                   n.enabled = enabled
+                }
+            }
+            newQuery.save(validate: true, flush: true)
+        }
     }
 
     /**
@@ -196,8 +237,8 @@ class QueryService {
                 name          : messageSource.getMessage("query.service.occurrences.name", [queryDisplayName] as Object[], siteLocale),
                 updateMessage : messageSource.getMessage("query.service.occurrences.update.msg", [queryDisplayName] as Object[], siteLocale),
                 description   : messageSource.getMessage("query.service.occurrences.desc", [queryDisplayName] as Object[], siteLocale),
-                queryPath     : biocacheWebserviceQueryPath + '&fq=first_loaded_date:' + '[___DATEPARAM___ TO *]'.encodeAsURL() + '&sort=+first_loaded_date&dir=desc&pageSize=20&facets=basis_of_record',
-                queryPathForUI: biocacheUIQueryPath + '&fq=first_loaded_date:' + '[___DATEPARAM___ TO *]'.encodeAsURL() + '&sort=+first_loaded_date&dir=desc',
+                queryPath     : biocacheWebserviceQueryPath + '&fq=first_loaded_date:' + '[___DATEPARAM___ TO *]'.encodeAsURL() + '&sort=first_loaded_date&dir=desc&pageSize=20&facets=basis_of_record',
+                queryPathForUI: biocacheUIQueryPath + '&fq=first_loaded_date:' + '[___DATEPARAM___ TO *]'.encodeAsURL() + '&sort=first_loaded_date&dir=desc',
                 dateFormat    : """yyyy-MM-dd'T'HH:mm:ss'Z'""",
                 emailTemplate : '/email/biocache',
                 recordJsonPath: '\$.occurrences',
@@ -215,8 +256,8 @@ class QueryService {
                 name          : messageSource.getMessage("query.service.annotations.name", [queryDisplayName] as Object[], siteLocale),
                 updateMessage : messageSource.getMessage("query.service.annotations.update.msg", [queryDisplayName] as Object[], siteLocale),
                 description   : messageSource.getMessage("query.service.annotations.desc", [queryDisplayName] as Object[], siteLocale),
-                queryPath     : biocacheWebserviceQueryPath + '&fq=(user_assertions:50005%20OR%20user_assertions:50003%20OR%20user_assertions:50002)&fq=last_assertion_date:' + '[___DATEPARAM___ TO *]'.encodeAsURL() + '&sort=+last_assertion_date&dir=desc&pageSize=20&facets=basis_of_record',
-                queryPathForUI: biocacheUIQueryPath + '&fq=(user_assertions:50005%20OR%20user_assertions:50003%20OR%20user_assertions:50002)&fq=last_assertion_date:' + '[___DATEPARAM___ TO *]'.encodeAsURL() + '&sort=+last_assertion_date&dir=desc',
+                queryPath     : biocacheWebserviceQueryPath + '&fq=(user_assertions:50005%20OR%20user_assertions:50003%20OR%20user_assertions:50002)&fq=last_assertion_date:'+'[___DATEPARAM___ TO *]'.encodeAsURL()+'&sort=last_assertion_date&dir=desc&pageSize=20&facets=basis_of_record',
+                queryPathForUI: biocacheUIQueryPath + '&fq=(user_assertions:50005%20OR%20user_assertions:50003%20OR%20user_assertions:50002)&fq=last_assertion_date:'+'[___DATEPARAM___ TO *]'.encodeAsURL()+'&sort=last_assertion_date&dir=desc',
                 dateFormat    : """yyyy-MM-dd'T'HH:mm:ss'Z'""",
                 emailTemplate : '/email/biocache',
                 recordJsonPath: '\$.occurrences',
@@ -252,8 +293,8 @@ class QueryService {
                 resourceName  : grailsApplication.config.mail.details.defaultResourceName,
                 updateMessage : messageSource.getMessage("query.service.occurrences.update.msg", [taxonName] as Object[], siteLocale),
                 description   : messageSource.getMessage("query.service.occurrences.desc", [taxonName] as Object[], siteLocale),
-                queryPath     : '/occurrences/taxon/' + taxonGuid + '?fq=first_loaded_date:' + '[___DATEPARAM___ TO *]'.encodeAsURL() + '&sort=+first_loaded_date&dir=desc&pageSize=20&facets=basis_of_record',
-                queryPathForUI: '/occurrences/taxa/' + taxonGuid + '?fq=first_loaded_date:' + '[___DATEPARAM___ TO *]'.encodeAsURL() + '&sort=+first_loaded_date&dir=desc',
+                queryPath     : '/occurrences/taxon/' + taxonGuid + '?fq=first_loaded_date:'+'[___DATEPARAM___ TO *]'.encodeAsURL()+'&sort=first_loaded_date&dir=desc&pageSize=20&facets=basis_of_record',
+                queryPathForUI: '/occurrences/taxa/' + taxonGuid + '?fq=first_loaded_date:'+'[___DATEPARAM___ TO *]'.encodeAsURL()+'&sort=first_loaded_date&dir=desc',
                 dateFormat    : """yyyy-MM-dd'T'HH:mm:ss'Z'""",
                 emailTemplate : '/email/biocache',
                 recordJsonPath: '\$.occurrences',
@@ -270,8 +311,8 @@ class QueryService {
                 resourceName  : grailsApplication.config.mail.details.defaultResourceName,
                 updateMessage : messageSource.getMessage("query.service.occurrences.recorded.update.msg", [taxonName, regionName] as Object[], siteLocale),
                 description   : messageSource.getMessage("query.service.occurrences.recorded.desc", [taxonName, regionName] as Object[], siteLocale),
-                queryPath     : '/occurrences/taxon/' + taxonGuid + '?fq=' + layerId + ':%22' + regionName.encodeAsURL() + '%22&fq=first_loaded_date:' + '[___DATEPARAM___ TO *]'.encodeAsURL() + '&sort=+first_loaded_date&dir=desc&pageSize=20&facets=basis_of_record',
-                queryPathForUI: '/occurrences/taxa/' + taxonGuid + '?fq=' + layerId + ':%22' + regionName.encodeAsURL() + '%22&fq=first_loaded_date:' + '[___DATEPARAM___ TO *]'.encodeAsURL() + '&sort=+first_loaded_date&dir=desc',
+                queryPath     : '/occurrences/taxon/' + taxonGuid + '?fq=' + layerId + ':%22' + regionName.encodeAsURL() + '%22&fq=first_loaded_date:'+'[___DATEPARAM___ TO *]'.encodeAsURL()+'&sort=first_loaded_date&dir=desc&pageSize=20&facets=basis_of_record',
+                queryPathForUI: '/occurrences/taxa/' + taxonGuid + '?fq=' + layerId + ':%22' + regionName.encodeAsURL() + '%22&fq=first_loaded_date:'+'[___DATEPARAM___ TO *]'.encodeAsURL()+'&sort=first_loaded_date&dir=desc',
                 dateFormat    : """yyyy-MM-dd'T'HH:mm:ss'Z'""",
                 emailTemplate : '/email/biocache',
                 recordJsonPath: '\$.occurrences',
@@ -288,8 +329,8 @@ class QueryService {
                 resourceName  : grailsApplication.config.mail.details.defaultResourceName,
                 updateMessage : messageSource.getMessage("query.service.occurrences.recorded.update.msg", [speciesGroup, regionName] as Object[], siteLocale),
                 description   : messageSource.getMessage("query.service.occurrences.recorded.desc", [speciesGroup, regionName] as Object[], siteLocale),
-                queryPath     : '/occurrences/search?q=' + layerId + ':%22' + regionName.encodeAsURL() + '%22&fq=species_group:' + speciesGroup + '&fq=first_loaded_date:' + '[___DATEPARAM___ TO *]'.encodeAsURL() + '&sort=+first_loaded_date&dir=desc&pageSize=20&facets=basis_of_record',
-                queryPathForUI: '/occurrences/search?q=' + layerId + ':"' + regionName.encodeAsURL() + '"&fq=species_group:' + speciesGroup + '&fq=first_loaded_date:' + '[___DATEPARAM___ TO *]'.encodeAsURL() + '&sort=+first_loaded_date&dir=desc',
+                queryPath     : '/occurrences/search?q=' + layerId + ':%22' + regionName.encodeAsURL() + '%22&fq=species_group:' + speciesGroup + '&fq=first_loaded_date:'+'[___DATEPARAM___ TO *]'.encodeAsURL()+'&sort=first_loaded_date&dir=desc&pageSize=20&facets=basis_of_record',
+                queryPathForUI: '/occurrences/search?q=' + layerId + ':"' + regionName.encodeAsURL() + '"&fq=species_group:' + speciesGroup + '&fq=first_loaded_date:'+'[___DATEPARAM___ TO *]'.encodeAsURL()+'&sort=first_loaded_date&dir=desc',
                 dateFormat    : """yyyy-MM-dd'T'HH:mm:ss'Z'""",
                 emailTemplate : '/email/biocache',
                 recordJsonPath: '\$.occurrences',
@@ -306,8 +347,8 @@ class QueryService {
                 resourceName  : grailsApplication.config.mail.details.defaultResourceName,
                 updateMessage : messageSource.getMessage("query.service.occurrences.update.msg", [regionName] as Object[], siteLocale),
                 description   : messageSource.getMessage("query.service.occurrences.desc", [regionName] as Object[], siteLocale),
-                queryPath     : '/occurrences/search?q=' + layerId + ':%22' + regionName.encodeAsURL() + '%22&fq=first_loaded_date:' + '[___DATEPARAM___ TO *]'.encodeAsURL() + '&sort=+first_loaded_date&dir=desc&pageSize=20&facets=basis_of_record',
-                queryPathForUI: '/occurrences/search?q=' + layerId + ':%22' + regionName.encodeAsURL() + '%22&fq=first_loaded_date:' + '[___DATEPARAM___ TO *]'.encodeAsURL() + '&sort=+first_loaded_date&dir=desc',
+                queryPath     : '/occurrences/search?q=' + layerId + ':%22' + regionName.encodeAsURL() + '%22&fq=first_loaded_date:'+'[___DATEPARAM___ TO *]'.encodeAsURL()+'&sort=first_loaded_date&dir=desc&pageSize=20&facets=basis_of_record',
+                queryPathForUI: '/occurrences/search?q=' + layerId + ':%22' + regionName.encodeAsURL() + '%22&fq=first_loaded_date:'+'[___DATEPARAM___ TO *]'.encodeAsURL()+'&sort=first_loaded_date&dir=desc',
                 dateFormat    : """yyyy-MM-dd'T'HH:mm:ss'Z'""",
                 emailTemplate : '/email/biocache',
                 recordJsonPath: '\$.occurrences',
@@ -324,63 +365,39 @@ class QueryService {
                 name          : messageSource.getMessage("query.myannotations.title", null, siteLocale),
                 updateMessage : messageSource.getMessage("myannotations.update.message", null, siteLocale),
                 description   : messageSource.getMessage("query.myannotations.descr", null, siteLocale),
-                queryPath     : constructMyAnnotationQueryPath(userId),
-                queryPathForUI: '/occurrences/search?fq=assertion_user_id:' + userId + '&dir=desc',
+                queryPath     : "/occurrences/search?fq=assertion_user_id:${userId}&dir=desc&pageSize=${grailsApplication.config.biocacheService.pageSize}&fq=lastAssertionDate:%5B___DATEPARAM___%20TO%20*%5D&sort=lastAssertionDate&disableAllQualityFilters=true",
+                queryPathForUI: "/occurrences/search?fq=assertion_user_id:${userId}&dir=desc&pageSize=${grailsApplication.config.biocacheService.pageSize}&fq=lastAssertionDate:%5B___DATEPARAM___%20TO%20*%5D&sort=lastAssertionDate&disableAllQualityFilters=true",
+                dateFormat    : """yyyy-MM-dd'T'HH:mm:ss'Z'""",
                 emailTemplate : '/email/myAnnotations',
                 recordJsonPath: '\$.occurrences[*]',
+                custom: false
         ])
     }
 
-    String constructMyAnnotationQueryPath(String userId) {
-        '/occurrences/search?fq=assertion_user_id:' + userId + '&dir=desc&pageSize=300'
-    }
-
-    /**
-     * Deprecated
-     * ___DATEPARAM___
-     * @param listid
-     * @return
-     */
-
-    Query createBioSecurityQuery(String listid) {
-        def sList = getSpeciesListName(listid)
-        String speciesListName = sList.name
-        //differentiate non-authoritative / authoritative list
-        String queryPathForUITemplate = grailsApplication.config.getProperty("biosecurity.query.template.nonAuthoritativeList", String, "/occurrences/search?q=species_list:___LISTIDPARAM___&fq=decade:2020&fq=country:Australia&fq=first_loaded_date:" + "[___DATEPARAM___ TO *]".encodeAsURL() + "&fq=occurrence_date:" + "[___LASTYEARPARAM___ TO *]".encodeAsURL() + "&sort=first_loaded_date&dir=desc&disableAllQualityFilters=true")
-        if (sList.isAuthoritative) {
-            queryPathForUITemplate = grailsApplication.config.getProperty("biosecurity.query.template.authoritativeList", String, "/occurrences/search?q=species_list_uid:___LISTIDPARAM___&fq=decade:2020&fq=country:Australia&fq=first_loaded_date:" + "[___DATEPARAM___ TO *]".encodeAsURL() + "&fq=occurrence_date:" + "[___LASTYEARPARAM___ TO *]".encodeAsURL() + "&sort=first_loaded_date&dir=desc&disableAllQualityFilters=true")
+    Query findMyAnnotationQuery(String userId) {
+        def myAnnotations = Query.findAllByQueryPathLikeAndEmailTemplate('/occurrences/search?fq=assertion_user_id:' + userId+'%', '/email/myAnnotations')
+        if (myAnnotations.size() > 1) {
+            log.warn("More than 1 MyAnnotation in query table found for user: ${userId}")
         }
-
-        String queryPathForUI = queryPathForUITemplate.replaceAll("___LISTIDPARAM___", listid)
-
-        new Query([
-                baseUrl       : grailsApplication.config.biocacheService.baseURL,
-                baseUrlForUI  : grailsApplication.config.biocache.baseURL,
-                name          : messageSource.getMessage("query.biosecurity.title", null, siteLocale) + ' ' + speciesListName,
-                resourceName  : grailsApplication.config.mail.details.defaultResourceName,
-                updateMessage : 'more.biosecurity.update.message',
-                description   : messageSource.getMessage("query.biosecurity.descr", null, siteLocale) + ' ' + speciesListName,
-                queryPath     : queryPathForUI + '&pageSize=20&facets=basis_of_record',
-                queryPathForUI: queryPathForUI,
-                dateFormat    : """yyyy-MM-dd'T'HH:mm:ss'Z'""",
-                emailTemplate : '/email/biosecurity',
-                recordJsonPath: '\$.occurrences[*]',
-                idJsonPath    : 'uuid',
-                custom        : true
-        ])
+        if (myAnnotations.size() >= 1) {
+            return myAnnotations[0]
+        } else {
+            return null
+        }
     }
 
-    def subscribeBioSecurity(User user, String listid) {
-        Query query = createBioSecurityQuery(listid)
-        createQueryForUserIfNotExists(query, user, true)
-    }
 
     // remove all user notifications for the specified query
     def unsubscribeAllUsers(Long queryId) {
-        def users = getSubscribers(Long.valueOf(queryId))
-        users?.forEach{user -> notificationService.deleteAlertForUser((User)user, queryId)}
+        def activeUsers = getSubscribers(Long.valueOf(queryId))
+        def inActiveUsers = getInactiveSubscribers(Long.valueOf(queryId))
+        activeUsers?.forEach{user -> notificationService.deleteAlertForUser((User)user, queryId)}
+        inActiveUsers?.forEach{user -> notificationService.deleteAlertForUser((User)user, queryId)}
     }
 
+    // todo check if we can only use one
+    // duplicate with wipe(id)
+    //
     // delete a query (also remove all subscriptions)
     def deleteQuery(Long queryId) {
         unsubscribeAllUsers(queryId)
@@ -390,65 +407,51 @@ class QueryService {
         }
     }
 
-    // return the number of biosecurity queries
-    def countBiosecurityQuery() {
-        return Query.countByEmailTemplate('/email/biosecurity')
-    }
 
-    // get all biosecurity queries
-    def getALLBiosecurityQuery() {
-        return Query.findAllByEmailTemplate('/email/biosecurity')
-    }
-
-    // get biosecurity queries with offset and limit
-    def getBiosecurityQuery(int offset,int limit) {
-        def criteria = Query.createCriteria()
-        List<Query> queries = criteria.list(max: limit, offset: offset) {
-            eq('emailTemplate', '/email/biosecurity')
-            order('id', 'desc')
-        }
-
-
-
-        def results = queries.collect{ query ->
-            // Bioseurity queries are weekly ONLY, so filter out the other frequencies
-            def filteredQueryResults = query.queryResults.findAll { it.frequency?.name == 'weekly' }
-            // Get the last QueryResult from the filtered list, if it exists
-            QueryResult qr = !filteredQueryResults.isEmpty() ? filteredQueryResults.first() : null
-
-            // Update the query's lastChecked property if a QueryResult was found
-            if (qr) {
-                query.lastChecked = qr.lastChecked
-                query.queryResults = [qr]
-            } else {
-                query.queryResults = []
-            }
-            query
-        }
-
-        return results.toList()
-    }
-
-
-    def findBiosecurityQueryById(id) {
-        Query subscription = Query.get(id)
-        QueryResult qr = QueryResult.findByQuery(subscription)
-        if (qr) {
-            subscription.lastChecked = qr.lastChecked
-        }
-        return subscription
-    }
-
-
-    // get all subscribers to the specified query
+    // get all subscribers to the specified query (only enabled notifications)
+    // NOTE: Some standard queries (e.g. New records) may have a further filter on the frequency which users select (e.g. daily, weekly, monthly).
+    // This method does not filter on frequency, it returns all users who have enabled notifications for the query.
     def getSubscribers(Long queryId) {
-        Query query = Query.findById(queryId)
-        return query ? Query.executeQuery(
-                """select u
-                  from User u
-                  inner join u.notifications n
-                  where n.query = :query
-                  group by u""", [query: query]) : []
+        Query query = Query.createCriteria().get {
+            eq('id', queryId)
+            fetchMode('notifications', org.hibernate.FetchMode.JOIN)
+        }
+        return query ? query.getSubscribers() : []
+    }
+
+    // get all inactive subscribers to the specified query (only disabled notifications)
+    // NOTE: Some standard queries (e.g. New records) may have a further filter on the frequency which users select (e.g. daily, weekly, monthly).
+    // This method does not filter on frequency, it returns all users who have enabled notifications for the query.
+    def getInactiveSubscribers(Long queryId) {
+        def query = Query.createCriteria().get {
+            eq('id', queryId)
+            fetchMode('notifications', org.hibernate.FetchMode.JOIN)
+        }
+        return query ? query.getInactiveSubscribers() : []
+    }
+
+    /**
+     * Collect the email addresses of all ACTIVE users subscribed to a given query, optionally filtered by frequency.
+     * including the user's unsubscribe token and the notification's unsubscribe token for that query.
+     * @param queryId
+     * @param frequency
+     * @return [email, unsubscribeToken, notificationUnsubscribeToken] for each user
+     */
+    def getRecipients(Long queryId, String frequency = null) {
+        def recipients = []
+        Query.withTransaction {
+            Query query = Query.createCriteria().get {
+                eq('id', queryId)
+                fetchMode('notifications', org.hibernate.FetchMode.JOIN)
+            }
+            User[] users = query ? query.getSubscribers(frequency).findAll{!it.locked} : []
+
+            recipients = users.collect { user ->
+                def notificationUnsubToken = user.notifications.find { it.query.id == query.id }?.unsubscribeToken
+                [email: user.email, userUnsubToken: user.unsubscribeToken, notificationUnsubToken: notificationUnsubToken]
+            }
+        }
+        return recipients
     }
 
     boolean speciesListExists(String listid) {
@@ -483,52 +486,52 @@ class QueryService {
     }
 
     def searchBiosecuritySubscriptions(keywords) {
-        def sql = new Sql(dataSource)
-        def result = null
         try {
-            // Execute a raw SQL for full-text match query
-            String query = "SELECT * FROM query WHERE name LIKE '%${keywords}%' AND email_template = '/email/biosecurity' LIMIT 10 "
-            result = sql.rows(query)
-        } catch(Exception e) {
-            // Handle any exceptions
+            List<Query> queries = Query.createCriteria().list(max: 10) {
+                or {
+                    ilike('name', "%${keywords}%")
+                    ilike('queryPath', "%${keywords}%") //contains listId
+                }
+                eq('emailTemplate', '/email/biosecurity')
+            }
+
+            return queries
+        } catch (Exception e) {
             log.error(e.message)
+            return []
         }
-        finally {
-            // Close the SQL connection
-            sql.close()
-        }
-        result
     }
 
     // delete a query (also remove all subscriptions)
-    @Transactional
     def wipe(id) {
         def result = ['status': 1, 'message': 'Runtime error, check logs']
         if (id) {
             def query = Query.findById(id)
             if (query) {
-                //Manually delete all related PropertyPath and PropertyValue, since the cascade delete does not work
-                PropertyPath.findAllByQuery(query).each { PropertyPath pp->
-                    log.debug("Deleting property path of : ${id}")
-                    PropertyValue.findAllByPropertyPath(pp).each { PropertyValue pv ->
-                        pv.delete(flush: true)
+                Query.withTransaction {
+                    //Manually delete all related PropertyPath and PropertyValue, since the cascade delete does not work
+                    PropertyPath.findAllByQuery(query).each { PropertyPath pp ->
+                        log.debug("Deleting property path of : ${id}")
+                        PropertyValue.findAllByPropertyPath(pp).each { PropertyValue pv ->
+                            pv.delete()
+                        }
+                        pp.delete()
                     }
-                    pp.delete(flush: true)
-                }
 
-                //Manually delete all related Notifications
-                Notification.findAllByQuery(query).each { Notification n ->
-                    log.debug("Deleting notification of : ${id}")
-                    n.delete(flush: true)
-                }
+                    //Manually delete all related Notifications
+                    Notification.findAllByQuery(query).each { Notification n ->
+                        log.debug("Deleting notification [${n.id}] of query: ${id} ")
+                        n.delete()
+                    }
 
-                //Manually delete all related QueryResults
-                QueryResult.findAllByQuery(query).each { QueryResult qr ->
-                    log.debug("Deleting query result of : ${id}")
-                    qr.delete(flush: true)
-                }
+                    //Manually delete all related QueryResults
+                    QueryResult.findAllByQuery(query).each { QueryResult qr ->
+                        log.debug("Deleting query result [${qr.id}] of query: ${id} ")
+                        qr.delete()
+                    }
 
-                query.delete()
+                    query.delete()
+                }
                 result['status'] = 0
                 result['message'] = "Query ${id} removed"
             } else {
@@ -542,11 +545,20 @@ class QueryService {
         result
     }
 
+    /**
+     * Get the last checked date for a given query.
+     * todo it may only work for Biosecurity, since Biosecurity queries are weekly only, and other queries may have multiple frequencies, so the last checked date may not be unique.
+     *
+     * @param query The query for which to retrieve the last checked date.
+     * @return The last checked date, or null if not found.
+     */
     def getLastCheckedDate(Query query) {
         def lastCheckedDate = null
-        def queryResult = QueryResult.findByQuery(query)
-        if (queryResult) {
-            lastCheckedDate = queryResult.lastChecked
+        QueryResult.withTransaction {
+            def queryResult = QueryResult.findByQuery(query)
+            if (queryResult) {
+                lastCheckedDate = queryResult.lastChecked
+            }
         }
         lastCheckedDate
     }
@@ -557,6 +569,7 @@ class QueryService {
     def summarize() {
         List<Query> queries =  Query.createCriteria().list {
             ne("name", "My Annotations")
+            ne("emailTemplate", "/email/biosecurity")
         }
 
         List<Query> myAnnotations =  Query.createCriteria().list {

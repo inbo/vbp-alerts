@@ -1,7 +1,5 @@
 package au.org.ala.alerts
 
-import com.jayway.jsonpath.JsonPath
-
 import java.text.SimpleDateFormat
 import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
@@ -14,12 +12,31 @@ class QueryResult {
     Date previousCheck        // timestamp of previous check
     String queryUrlUsed       //query URL used
     String queryUrlUIUsed       //query URL used
-    Boolean hasChanged = false
     Date lastChanged
     byte[] lastResult
     byte[] previousResult
     String logs
-    transient boolean succeed = true
+    Boolean hasChanged = false  // flag to indicate if the records have changed
+    /**
+     * Temporary store the new records calculated by diffService
+     * if the new records are not empty, then the hasChanged flag should be true
+     * and the lastChanged should be updated
+     */
+    transient def newRecords = [] // list of new records
+    /**
+     * This flag to indicate if the PROCESSING query was successful
+     * This flag MUST be set ONLY when requesting a new query to the server.
+     * If you load the query result from database, you should not check this flag
+     * Or you should set it manually
+     */
+    transient boolean succeeded = false
+    /**
+     * Store the total number of records from Biocache queries, e.g. occurrences, images, etc,
+     * since those queries have pageSize, the count of returned records is not the total records.
+     *
+     * For other queries, e.g. myAnnotation, lists, their own diffService need to update this value.
+     */
+    transient int totalRecords = 0
 
     String[] getLog() {
         return logs ? logs.split("\n") : []
@@ -27,6 +44,17 @@ class QueryResult {
 
     void newLog(String log) {
         logs = log
+        this.markDirty()
+    }
+
+    /**
+     * Create new logs with overwriting the existing logs
+     */
+    void newLogs(List<String> newLogs) {
+        this.logs = newLogs.join('\n')
+        //Force the logs to be dirty.
+        //Otherwise GORM cannot detect the changes for some unknown reasons
+        this.markDirty()
     }
 
     void addLog(String log) {
@@ -64,6 +92,7 @@ class QueryResult {
         logs nullable: true
     }
 
+
     static mapping = {
         propertyValues cascade: 'all-delete-orphan'
 
@@ -72,21 +101,24 @@ class QueryResult {
         queryUrlUsed sqlType: 'text'
         queryUrlUIUsed sqlType: 'text'
         logs sqlType: 'text' , defaultValue: ""
+
+        frequency lazy: false
+        query lazy: false
     }
 
     String toString() {
-        "${frequency?.name}: ${lastChanged ? 'Changed' : 'No Change'} on ${lastChecked}"
+        "${frequency?.name}: ${query?.name} : ${id} ${lastChanged ? 'Changed' : 'No Change'} on ${lastChecked}"
     }
 
     Map brief() {
-        [queryId: query?.id, query: query?.name, frequency: frequency?.name, queryResultId: id, lastChecked: lastChecked, hasChanged: hasChanged, lastChanged: lastChanged,
+        [queryId: query?.id, query: query?.name, frequency: frequency?.name, queryUrl: queryUrlUsed, queryResultId: id, lastChecked: lastChecked, hasChanged: hasChanged, lastChanged: lastChanged,
          property: displayProperties(),
          sizeOfcurrentResult: lastResult ? decompress(lastResult).size() : 0, sizeOfPreviousResult: previousResult ? decompress(previousResult).size() : 0
         ]
     }
 
     Map details() {
-        [queryId: query?.id, query: query?.name, frequency: frequency?.name, queryResultId: id, lastChecked: lastChecked, hasChanged: hasChanged, lastChanged: lastChanged,
+        [queryId: query?.id, query: query?.name, frequency: frequency?.name, queryUrl: queryUrlUsed,queryResultId: id, lastChecked: lastChecked, hasChanged: hasChanged, lastChanged: lastChanged,
          property: displayProperties(),
          currentResult: lastResult ? decompress(lastResult) : null, previousResult: previousResult ? decompress(previousResult) : null
         ]
@@ -98,12 +130,7 @@ class QueryResult {
             propertyPaths.add(propertyPath.toString())
         }
 
-        def propertyValue = []
-        propertyValues.each { pv ->
-            propertyValue.add(pv.toString())
-        }
-
-        ["Properties in Query", propertyPaths, "Property Values in Query Result", propertyValue]
+        ["Properties in Query", propertyPaths]
     }
 
     String decompress(byte[] zipped) {
@@ -129,7 +156,6 @@ class QueryResult {
     }
 
     byte[] compress(String json) {
-        //store the last result from the webservice call
         if (json) {
             ByteArrayOutputStream bout = new ByteArrayOutputStream()
             GZIPOutputStream gzout = new GZIPOutputStream(bout)

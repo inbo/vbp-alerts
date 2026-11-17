@@ -26,7 +26,7 @@
                 </tr>
                 <!-- Header -->
                 <tr>
-                <td height="120" style="color:white;background-color:rgba(128, 128, 128, 0.85);padding: 20px 10px 20px 10px;text-align: center;font-family: 'flanders-sans', sans-serif;font-size: 16px;line-height: 1.5;background-image:url(${grailsApplication.config.grails.serverURL}/assets/email/kluut.jpg);background-position: top center;background-size: cover;background-repeat: no-repeat">
+                    <td background="${grailsApplication.config.grails.serverURL}/assets/email/kluut.jpg" width="620" height="120" style="color:white;background-color:rgba(128, 128, 128, 0.85);padding: 20px 10px 20px 10px;text-align: center;font-family: 'flanders-sans', sans-serif;font-size: 16px;line-height: 1.5;background-image:url(${grailsApplication.config.grails.serverURL}/assets/email/kluut.jpg);background-position: top center;background-size: cover;background-repeat: no-repeat">
                         <h1 style="font-size: 24px; color: #fff;"><g:message code="alerts.email.heading" args="${[query.name]}"/></h1>
                         <p style="font-size: 16px; color: #fff;"><strong>${new SimpleDateFormat("dd MMM yyyy").format(new Date())}</strong></p>
                     </td>
@@ -41,6 +41,7 @@
                                 <g:message code="datasets.updates.title" args="${[totalRecords]}"/>
                             </g:else>
                         </div>
+
                     </td>
                 </tr>
             <!-- Records Section -->
@@ -51,33 +52,36 @@
                             <table style="width: 100%">
                                 <tr style="vertical-align: top;">
                                     <td style="width: 70%">
-                                        <strong>${i+1}.</strong>
-                                        <a href="${oclink}" style="color: #003A70;font-family: 'flanders-sans', sans-serif;font-size: 16px;line-height: 1.5;">
-                                                <strong><em>${oc.name}</em></strong>
-                                        </a>
-                                        <p style="padding-left: 15px;">
-
-                                            <g:if test="${oc.details?.licenseType}">
-                                                Licence: ${oc.details?.licenseType}<br/>
-                                            </g:if>
-                                            <g:if test="${oc.details?.resourceType}">
-                                                Content type: ${oc.details?.resourceType}<br/>
-                                            </g:if>
-
-
-                                            <br/>
-                                            <g:if test="${oc.details?.pubShortDescription}">
-                                                ${StringUtils.abbreviate(oc.details?.pubShortDescription, 200)}
-                                                <br/>
-                                            </g:if>
-                                            <g:else>
-                                                <g:if test="${oc.details?.pubDescription}">
-                                                    ${StringUtils.abbreviate(oc.details?.pubDescription, 200)}
-                                                    <br/>
-                                                </g:if>
-                                            </g:else>
-                                        </p>
-
+                                        <table>
+                                            <tr>
+                                                <td style="white-space: nowrap; vertical-align: top; text-align: right; padding-right: 10px;">
+                                                    <strong>${i+1}. </strong>
+                                                </td>
+                                                <td style="vertical-align: top;">
+                                                    <a href="${oclink}" style="color: #003A70;font-family: 'flanders-sans', sans-serif;font-size: 16px;line-height: 1.5;">
+                                                        <strong><em>${oc.name}</em></strong>
+                                                    </a>
+                                                    <p>
+                                                        <g:if test="${oc.details?.licenseType}">
+                                                            Licence: ${oc.details?.licenseType}<br/>
+                                                        </g:if>
+                                                        <g:if test="${oc.details?.resourceType}">
+                                                            Content type: ${oc.details?.resourceType}<br/>
+                                                        </g:if>
+                                                        <g:if test="${oc.details?.pubShortDescription}">
+                                                            ${StringUtils.abbreviate(oc.details?.pubShortDescription, 200)}
+                                                            <br/>
+                                                        </g:if>
+                                                        <g:else>
+                                                            <g:if test="${oc.details?.pubDescription}">
+                                                                ${StringUtils.abbreviate(oc.details?.pubDescription, 200)}
+                                                                <br/>
+                                                            </g:if>
+                                                        </g:else>
+                                                    </p>
+                                                </td>
+                                            </tr>
+                                        </table>
                                     </td>
                                     <td style="width: 33%; text-align: right;" >
                                         <g:if test="${oc.image != null}">

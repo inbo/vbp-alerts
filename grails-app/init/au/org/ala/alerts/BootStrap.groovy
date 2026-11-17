@@ -1,10 +1,7 @@
 package au.org.ala.alerts
 
-import ala.postie.BiosecurityQueriesJob
-
 class BootStrap {
 
-    javax.sql.DataSource dataSource
     def grailsApplication
     def messageSource
     def siteLocale
@@ -12,7 +9,6 @@ class BootStrap {
 
     def init = { servletContext ->
         log.info("Running bootstrap queries.")
-
         // if my annotation feature turned on, add url mapping to handle add/remove alert requests
         if (grailsApplication.config.getProperty('myannotation.enabled', Boolean, false)) {
             grailsUrlMappingsHolder.addMappings({
@@ -33,25 +29,15 @@ class BootStrap {
 
         siteLocale = new Locale.Builder().setLanguageTag(grailsApplication.config.getProperty('siteDefaultLanguage', String, 'nl')).build();
         Locale.setDefault(siteLocale)
+        TimeZone.setDefault(TimeZone.getTimeZone('UTC'))
+        log.info "Application running with timezone: ${TimeZone.default.ID}"
 
         preloadQueries()
         log.info("Done bootstrap queries.")
-
-        // dynamic job
-        def cron = grailsApplication.config.getProperty("biosecurity.cronExpression")
-        if (cron) {
-            BiosecurityQueriesJob.schedule(cron)
-        }
     }
 
     private void preloadQueries() {
         log.info("start of preloadQueries")
-        if(Frequency.findAll().isEmpty()){
-            (new Frequency([name: 'hourly', periodInSeconds:3600])).save()
-            (new Frequency([name: 'daily'])).save()
-            (new Frequency([name: 'weekly', periodInSeconds:604800])).save()
-            (new Frequency([name: 'monthly', periodInSeconds:2419200])).save()
-        }
 
         def title = messageSource.getMessage("query.annotations.title", null, siteLocale)
         def descr = messageSource.getMessage("query.annotations.descr", null, siteLocale)
@@ -106,7 +92,7 @@ class BootStrap {
                     updateMessage: 'more.images.update.message',
                     description: descr,
                     queryPath: '/occurrences/search?q=first_loaded_date:' + '[___DATEPARAM___ TO *]'.encodeAsURL() + '&sort=first_loaded_date&dir=desc&fq=multimedia:Image&pageSize=20&facets=basis_of_record',
-                    queryPathForUI: '/occurrences/search?q=first_loaded_date:' + '[___DATEPARAM___ TO *]'.encodeAsURL() + '&sort=first_loaded_date&dir=desc&fq=multimedia:Image',
+                    queryPathForUI: '/occurrences/search?q=first_loaded_date:' + '[___DATEPARAM___ TO *]'.encodeAsURL() + '&sort=first_loaded_date&dir=desc&fq=multimedia:Image#tab_recordImages',
                     dateFormat: """yyyy-MM-dd'T'HH:mm:ss'Z'""",
                     emailTemplate: '/email/biocache',
                     fireWhenNotZero: true,
@@ -119,7 +105,7 @@ class BootStrap {
 
         title = messageSource.getMessage("query.citizen.records.title", null, siteLocale)
         descr = messageSource.getMessage("query.citizen.records.descr", null, siteLocale)
-        if (grailsApplication.config.useCitizenScienceAlerts.toBoolean() &&
+        if (grailsApplication.config.useCitizenScienceAlerts?.toBoolean() &&
                 Query.findAllByName(title).isEmpty()) {
             Query newCitizenScienceRecords = (new Query([
                     baseUrl: grailsApplication.config.biocacheService.baseURL,
@@ -142,7 +128,7 @@ class BootStrap {
 
         title = messageSource.getMessage("query.citizen.records.imgs.title", null, siteLocale)
         descr = messageSource.getMessage("query.citizen.records.imgs.descr", null, siteLocale)
-        if (grailsApplication.config.useCitizenScienceAlerts.toBoolean() &&
+        if (grailsApplication.config.useCitizenScienceAlerts?.toBoolean() &&
                 Query.findAllByName(title).isEmpty()) {
             Query newCitizenScienceRecordsWithImages = (new Query([
                     baseUrl: grailsApplication.config.biocacheService.baseURL,
@@ -201,7 +187,7 @@ class BootStrap {
             new PropertyPath([name: "dataset_count", jsonPath: "\$.facetResults[0].fieldResult", query: newOccurrenceDatasets, fireWhenChange: true]).save()
         }
 
-        title = messageSource.getMessage("query.datasets.title", null, siteLocale)
+/*        title = messageSource.getMessage("query.datasets.title", null, siteLocale)
         descr = messageSource.getMessage("query.datasets.descr", null, siteLocale)
         if(Query.findAllByName(title).isEmpty()){
             Query newDatasets = (new Query([
@@ -218,7 +204,7 @@ class BootStrap {
                     idJsonPath: 'uid'
             ])).save()
             new PropertyPath([name: "dataset_count", jsonPath: "\$", query: newDatasets, fireWhenChange: true]).save()
-        }
+        }*/
 
         title = messageSource.getMessage("query.species.lists.title", null, siteLocale)
         descr = messageSource.getMessage("query.species.lists.descr", null, siteLocale)
@@ -232,7 +218,7 @@ class BootStrap {
                     resourceName:  grailsApplication.config.mail.details.defaultResourceName,
                     updateMessage: 'more.specieslist.update.message',
                     description: descr,
-                    queryPath: '/speciesList?max=___MAX___&offset=___OFFSET___',
+                    queryPath: '/speciesList?max=___MAX___&offset=___OFFSET___&isAuthoritative=eq%3Atrue',
                     queryPathForUI: '/public/speciesLists?q=&max=25&sort=dateCreated&order=desc',
                     emailTemplate: '/email/specieslists',
                     recordJsonPath: '\$.lists[*]',

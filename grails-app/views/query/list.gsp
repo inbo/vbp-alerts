@@ -4,47 +4,63 @@
 <html>
 	<head>
 		<meta name="layout" content="${grailsApplication.config.skin.layout}" />
-		<meta name="breadcrumb" content="Query list" />
-		<meta name="breadcrumbParent" content="${grailsApplication.config.grails.serverURL?:'/'},Alerts" />
+		<meta name="breadcrumb" content="Queries" />
+		<meta name="breadcrumbParent" content="${createLink(controller:'admin')},Admin" />
 		<g:set var="entityName" value="${message(code: 'query.label', default: 'Query')}" />
 		<title><g:message code="default.list.label" args="[entityName]" /></title>
 		<asset:stylesheet href="alerts.css"/>
 	</head>
 	<body>
-		<a href="#list-query" class="skip" tabindex="-1"><g:message code="default.link.skip.label" default="Skip to content&hellip;"/></a>
-		<div class="nav" role="navigation">
-			<ul>
-                <li><g:link controller="admin" class="home">Admin</g:link></li>
-				<li><g:link class="create" action="create"><g:message code="default.new.label" args="[entityName]" /></g:link></li>
-			</ul>
+		<div class="d-flex justify-content-end align-items-center">
+			<a href="${createLink(action:'create')}"
+			   class="btn btn-outline-primary">
+				<g:message code="default.new.label" args="[entityName]" />
+			</a>
 		</div>
 		<div id="list-query" class="content scaffold-list" role="main">
-			<h1><g:message code="default.list.label" args="[entityName]" /> :  ${queryInstanceTotal}</h1>
+			<h3><g:message code="default.list.label" args="[entityName]" /> :  ${queryInstanceTotal}</h3>
 			<g:if test="${flash.message}">
-			<div class="message" role="status">${flash.message}</div>
+			<div class="alert alert-danger" role="status">${flash.message}</div>
 			</g:if>
-			<table class="table table-bordered table-striped">
+			<g:if test="${queryInstanceTotal > params.int('max')}">
+				<nav aria-label="Query list pages" class="mt-3">
+					<div class="pagination">
+						<g:paginate total="${queryInstanceTotal}" max="${params.max}" maxsteps="10"/>
+					</div>
+				</nav>
+			</g:if>
+			<div class="text-muted small mt-2">
+				Showing ${queryInstanceList.size()} of ${queryInstanceTotal}
+			</div>
+			<table class="table table-bordered table-striped" id="queries">
 				<thead>
 					<tr>
 					    <g:sortableColumn property="id" title="${message(code: 'query.description.label', default: 'ID')}" />
+                        <g:sortableColumn property="emailTemplate" title="${message(code: 'query.emailTemplate.label', default: 'Type')}" />
                         <g:sortableColumn property="description" title="${message(code: 'query.description.label', default: 'Query title')}" />
                         %{--<g:sortableColumn property="resourceName" title="${message(code: 'query.description.label', default: 'Resource')}" />--}%
-                        <th></th>
 					</tr>
 				</thead>
 				<tbody>
 				<g:each in="${queryInstanceList}" status="i" var="queryInstance">
 					<tr class="${(i % 2) == 0 ? 'even' : 'odd'}">
 						<td>${fieldValue(bean: queryInstance, field: "id")}</td>
+                        <td>${queryInstance.emailTemplate?.replaceFirst('^/email/', '')}</td>
                         %{--<td>${fieldValue(bean: queryInstance, field: "resourceName")}</td>--}%
 						<td><g:link action="show" id="${queryInstance.id}">${fieldValue(bean: queryInstance, field: "description")}</g:link></td>
-                        <td><g:link class="btn btn-ala btn-xs" action="debugAlert" controller="admin" id="${queryInstance.id}"><g:message code="query.list.debug" /></g:link></td>
 					</tr>
 				</g:each>
 				</tbody>
 			</table>
-			<div class="pagination">
-				<g:paginate total="${queryInstanceTotal}" />
+			<g:if test="${queryInstanceTotal > params.int('max')}">
+				<nav aria-label="Query list pages" class="mt-3">
+					<div class="pagination">
+						<g:paginate total="${queryInstanceTotal}" max="${params.max}" maxsteps="10"/>
+					</div>
+				</nav>
+			</g:if>
+			<div class="text-muted small mt-2">
+				Showing ${queryInstanceList.size()} of ${queryInstanceTotal}
 			</div>
 		</div>
 	</body>

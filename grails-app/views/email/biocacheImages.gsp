@@ -9,30 +9,17 @@
     <title><g:message code="alert.title" args="[query.resourceName]" /></title>
     <style>
     /* Gallery styling */
-    .imgCon {
-        display: inline-block;
-        /* margin-right: 8px; */
-        text-align: center;
-        line-height: 1.3em;
-        background-color: #DDD;
-        color: #DDD;
-        font-size: 12px;
-        /*text-shadow: 2px 2px 6px rgba(255, 255, 255, 1);*/
-        /* padding: 5px; */
-        /* margin-bottom: 8px; */
-        margin: 2px 4px 2px 0;
-        position: relative;
-    }
-
     .info-button {
-        border: 1pt solid #003A70;
+        border: 1pt solid #C44D34;
         text-decoration: none;
         font-size: 14px;
         padding: 10px 15px 10px 15px;
+        color: black;
+        border-radius: 8px;
     }
 
     </style>
-    <g:render template="/email/vlaanderenStyle"/>
+<g:render template="/email/vlaanderenStyle"/>
 </head>
 
 <body style="background-color: #f4f4f4;margin: 0;padding: 0;font-family: 'flanders-sans', sans-serif;font-size: 16px;line-height: 1.5;">
@@ -57,7 +44,7 @@
                 </tr>
                 <tr>
                     <td style="background-color: #E8E8E8;color: #000;padding: 40px 30px 40px 30px;text-align: center;font-family: 'flanders-sans', sans-serif;font-size: 22px;line-height: 1.5;">
-                        <g:set var="totalRecords" value="${records.values().sum { it.size() }}" />
+                        <g:set var="totalRecords" value="${totalRecords}" />
                         <div>
                         <g:if test="${totalRecords == 1}">
                             <g:message code="biocache.images.record.update.title" args="${[totalRecords]}"/>
@@ -68,7 +55,9 @@
                         </div>
                         <br/>
                         <div>
-                            <a class="btn info-button" href="${moreInfo}"><g:message code="biocache.images.viewall"/></a>
+                            <g:if test="${moreInfo?.queryUrlUIUsed}">
+                                <a class="btn info-button" href="${moreInfo.queryUrlUIUsed}"><g:message code="biocache.images.viewall"/></a>
+                            </g:if>
                         </div>
                     </td>
                 </tr>
@@ -84,17 +73,8 @@
                             <table style="width: 100%">
                                 <tr>
                                     <td colspan="4">
-                                        <h3>Dataset: <a href="${dataResourcePublicUrl}">${dataResourceName}</a></h3>
-                                        <g:if test="${occurrences[0]?.dataResourceInfo?.lastUpdated}">
-                                            <%
-                                                try {
-                                                    def parsedDate = Date.parse("yyyy-MM-dd'T'HH:mm:ss'Z'", occurrences[0]?.dataResourceInfo?.lastUpdated)
-                                                    out << "<p>Last updated: " + new SimpleDateFormat("dd MMM yyyy").format(parsedDate) +"</p>"
-                                                } catch (Exception e) {
-                                                    out <<"<p>Last updated: " + occurrences[0]?.dataResourceInfo?.lastUpdated +"</p>"
-                                                }
-                                            %>
-                                        </g:if>
+                                        <h3><g:message code="alerts.dataset"/> <a
+ href="${dataResourcePublicUrl}" style="color: #003A70;text-decoration: none;">${dataResourceName}</a></h3>
                                         <hr/>
                                     </td>
                                 </tr>
@@ -103,14 +83,10 @@
                                         <tr>
                                     </g:if>
                                     <td style="width: 25%; vertical-align: top;">
-                                        <a href="${query.baseUrlForUI}/occurrences/${oc.uuid}">
+                                        <a href="${query.baseUrlForUI}/occurrences/${oc.uuid}" style="color: #003A70;font-family: 'flanders-sans', sans-serif;font-size: 16px;line-height: 1.5;">
                                             <img src="${oc.smallImageUrl}" alt="${message(code:"biocache.images.alt.image", args:[oc.scientificName])}" style="vertical-align: top; width:150px; height:150px;border-radius: 6px;line-height: 100%;"/></a>
                                         <br/>
-                                        <i>${oc.scientificName} <br>
-                                            <g:if test="${oc.eventDate}">
-                                             ${new SimpleDateFormat("dd MMM yyyy").format(oc.eventDate)}
-                                            </g:if>
-                                        </i>
+                                        <i>${oc.scientificName}</i><br>
                                     </td>
                                     <g:if test="${(j + 1) % 4 == 0 || j + 1 == occurrences.size()}">
                                         </tr>

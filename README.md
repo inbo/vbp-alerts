@@ -4,6 +4,42 @@ This is a small app responsible for sending email alerts when there are changes 
 
 Scheduling is handled by Quartz plugin in the app. It works like RSS - it checks the JSON service and reads the results and then compares that with the previously stored check and if there are new records, it triggers an email. Relies on records being sorted by date loaded. Works with any endpoint that can return date-sorted JSON output.
 
+## Version > `6.0.0-SNAPSHOT`, supports Grails 7.1.1.
+NOTES:
+Grails 7.1.1 is not compatible with Grails 6
+
+## Grails 6 updates IMPORTANT >= version 5.2.5
+
+The custom dataSource configuration is no longer required from this version. Use the standard:
+```
+dataSource:
+    url: jdbc:mysql://localhost/alerts
+    username: alerts_user
+    password: password
+    driverClassName: com.mysql.cj.jdbc.Driver
+    dialect: org.hibernate.dialect.MySQL8Dialect
+```
+
+## IMPORTANT
+
+The application continues to use this optional external config file:
+```
+spring:
+    config:
+        import: "optional:file:/data/alerts/config/alerts-config.yml"
+```
+
+To align with the Grails 6 initialization process, the Grails externalConfig plugin has been removed.
+All properties previously defined in alerts-config.properties have been migrated to alerts-config.yml and are now loaded exclusively through Spring using SPRING_CONFIG_ADDITIONAL_LOCATION.
+
+Spring can also load this external configuration via an environment variable, allowing you to specify your own file, for example:
+
+```
+SPRING_CONFIG_ADDITIONAL_LOCATION=file:/data/alerts/config/alerts-config.yml
+```
+If neither the import nor the environment variable is provided, Spring-managed components will not see the required configuration and may fall back to
+defaults (for example, H2 or Quartz RAMJobStore).
+
 # Build status
 
 [![Build Status](https://api.travis-ci.com/AtlasOfLivingAustralia/alerts.svg?branch=develop)](https://app.travis-ci.com/github/AtlasOfLivingAustralia/alerts)
@@ -24,7 +60,7 @@ What the docker-compose does:
 1. ```create user 'alerts_user'@'localhost' identified as 'alerts_user';```
 1. ```grant all privileges on *.* to 'alerts_user'@'localhost';```
 1. ```create database alerts```
-1. Create /data/alerts/config/alerts-config.properties
+1. Create /data/alerts/config/alerts-config.yml
 1. Use the template in ala-install to get the necessary values
 
 
@@ -36,6 +72,35 @@ Run [smtp4dev](https://github.com/rnwood/smtp4dev) via Docker:
 Emails will be sent on SMTP port 2525 (configure sending emails via `mail.enabled=true`, `grails.mail.port=2525` and `grails.mail.server=localhost`. Note: emails will not be delivered externally so you don't have to worry about spamming users.
 
 You can view all sent emails via the smtp4dev UI on http://localhost:3000/, inlcuding HTML emails which are nicely displayed.
+
+
+## Releases
+
+### 6.3.1
+Implement E2E Playwright tests 
+
+### 6.3.0
+Add a monitoring team to track the completion of the Biosecurity alerts
+and other minor features and fixex
+
+### 6.2.0
+Biosecurity code restructure - improve usability and avoid silent failures
+
+### 6.1.0
+Toggle on/off on the customized alerts
+User management improvements
+
+### 6.0.0
+Grails7 update
+Liquibase is now managed by CICD
+Annually aggregate and archive Biosecurity CSVs
+Biosecurity related bug fixes
+
+### 5.2.0 Release
+
+Change logs:
+Liquibase were introduced to manage DB changes
+Spring uses /data/alerts/config/alerts-config.yaml as default external config file
 
 
 ### 4.2.0 Release

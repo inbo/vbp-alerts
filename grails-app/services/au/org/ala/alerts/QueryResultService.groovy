@@ -14,6 +14,8 @@
 
 package au.org.ala.alerts
 
+import jakarta.transaction.Transactional
+
 /**
  * Database service for QueryResult:
  */
@@ -38,5 +40,22 @@ class QueryResultService {
             qs.propertyValues = [pvs]
         }
         return qs
+    }
+
+    /**
+     * Reset the QueryResult
+     * @param id
+     */
+    def reset(id){
+        QueryResult qs = QueryResult.get(id)
+        if (qs) {
+            qs.previousResult = null
+            qs.lastResult = null
+            qs.hasChanged = false
+            qs.lastChecked = qs.lastChanged = null
+            QueryResult.withTransaction {
+                qs.save(flush:true)
+            }
+        }
     }
 }

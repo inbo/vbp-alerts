@@ -10,7 +10,7 @@
 </head>
 <g:render template="/email/vlaanderenStyle"/>
 <body style="background-color: #f4f4f4;margin: 0;padding: 0;font-family: 'flanders-sans', sans-serif;font-size: 16px;line-height: 1.5;">
-<table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f4f4f4;border-spacing: 0;border-collapse: collapse;">
+<table style="border: 0; width: 100%; background-color: #f4f4f4;border-spacing: 0;border-collapse: collapse;">
     <tr>
         <td align="center" style="padding: 20px;font-family: 'flanders-sans', sans-serif;font-size: 16px;line-height: 1.5;">
             <table border="0" cellpadding="0" cellspacing="0" width="650" style="background-color: #ffffff;font-family: 'flanders-sans', sans-serif;font-size: 16px;line-height: 1.5;border-spacing: 0;border-collapse: collapse;">
@@ -24,7 +24,7 @@
                 </tr>
                 <!-- Header -->
                 <tr>
-                    <td height="120" style="color:white;background-color:rgba(128, 128, 128, 0.85);padding: 20px 10px 20px 10px;text-align: center;font-family: 'flanders-sans', sans-serif;font-size: 16px;line-height: 1.5;background-image:url(${grailsApplication.config.grails.serverURL}/assets/email/kluut.jpg);background-position: top center;background-size: cover;background-repeat: no-repeat">
+                    <td  align="center" background="${grailsApplication.config.grails.serverURL}/assets/email/kluut.jpg" width="620" height="120" style="color:white;background-color:rgba(128, 128, 128, 0.85);padding: 20px 10px 20px 10px;text-align: center;font-family: 'flanders-sans', sans-serif;font-size: 16px;line-height: 1.5;background-image:url(${grailsApplication.config.grails.serverURL}/assets/email/kluut.jpg);background-position: top center;background-size: cover;background-repeat: no-repeat">
                         <h1 style="font-size: 24px; color: #fff;"><g:message code="alerts.email.heading" args="${[query.name]}"/></h1>
                         <p style="font-size: 16px; color: #fff;"><strong>${new SimpleDateFormat("dd MMM yyyy").format(new Date())}</strong></p>
                     </td>
@@ -32,12 +32,17 @@
                 <tr>
                     <td style="background-color: #E8E8E8;color: #000;padding: 40px 30px 40px 30px;text-align: center;font-family: 'flanders-sans', sans-serif;font-size: 22px;line-height: 1.5;">
                         <div>
-                             <g:if test="${totalRecords == 1}">
-                                <g:message code="biocache.occurrences.record.update.title" args="${[totalRecords]}"/>
-                             </g:if>
-                             <g:else>
-                                 <g:message code="biocache.occurrences.records.update.title" args="${[totalRecords]}"/>
-                             </g:else>
+                            <g:if test="${totalRecords == 1}">
+                                <g:message code="annotations.record.update.title" args="${[totalRecords]}"/>
+                            </g:if>
+                            <g:else>
+                                <g:message code="annotations.records.update.title" args="${[totalRecords]}"/>
+                            </g:else>
+                        </div>
+                        <div style="padding-top: 20px;">
+                            <g:if test="${moreInfo?.queryUrlUIUsed}">
+                                <a class="btn info-button" href="${moreInfo.queryUrlUIUsed}"><g:message code="annotations.viewall"/></a>
+                            </g:if>
                         </div>
                     </td>
                 </tr>
@@ -50,32 +55,42 @@
                         <table style="width: 100%">
                             <tr style="vertical-align: top;">
                                 <td style="width: 37%">
-                                    <a href="${occurrencelink}" style="color: #C44D34;text-decoration: none;font-family: 'flanders-sans', sans-serif;font-size: 16px;line-height: 1.5;">
-                                        <g:if test="${ oc.scientificName?:oc.vernacularName ?: oc.raw_raw_scientificName}">
-                                            <strong>${i+1}. <em>${oc.scientificName?: oc.vernacularName ?: oc.raw_raw_scientificName }</em></strong>
-                                        </g:if>
-                                    </a>
-                                    <p style="padding-left: 15px;">
-                                        <g:if test="${oc.taxonRankID > 5000}"><i></g:if>
-                                        ${oc.vernacularName}<br/>
-                                        <g:if test="${oc.taxonRankID > 5000}"></i></g:if>
-                                        ${oc.stateProvince}<br/>
-                                        <g:message code="alerts.family" args="${[oc.family]}"/><br/>
-                                        <g:if test="${oc.dataProviderName}">
-                                            <g:message code="alerts.source" args="${[oc.dataProviderName]}"/>
-                                        </g:if>
-                                    </p>
-
+                                     <table>
+                                        <tr>
+                                            <td style="white-space: nowrap; vertical-align: top; text-align: right; padding-right: 10px;">
+                                            <strong>${i+1}. </strong>
+                                            </td>
+                                             <td style="vertical-align: top;">
+                                                 <a href="${occurrencelink}" style="color: #003A70;text-decoration: none;font-family: 'flanders-sans', sans-serif;font-size: 16px;line-height: 1.5;">
+                                                    <strong><em>${oc.scientificName?: oc.vernacularName ?: oc.raw_raw_scientificName }</em></strong>
+                                                 </a>
+                                                 <p>
+                                                    <g:if test="${oc.vernacularName}">
+                                                         ${oc.vernacularName}<br/>
+                                                    </g:if>
+                                                     <g:if test="${oc.stateProvince}">
+                                                         ${oc.stateProvince}<br/>
+                                                     </g:if>
+                                                     <g:if test="${oc.family}">
+                                                         <g:message code="alerts.family" args="${[oc.family]}"/><br/>
+                                                     </g:if>
+                                                     <g:if test="${oc.dataProviderName}">
+                                                         <g:message code="alerts.source" args="${[oc.dataProviderName]}"/>
+                                                     </g:if>
+                                                 </p>
+                                             </td>
+                                        </tr>
+                                     </table>
                                 </td>
-                                <td class="annotation" nowrap="nowrap" style="width: 30%; word-wrap: break-word; white-space: normal;">
+                                <td class="annotation" nowrap="nowrap" style="width: 30%; padding-left:10px;padding-top:8px; word-wrap: break-word; white-space: normal;">
                                     <g:if test="${oc.user_assertions?.size() > 0}">
                                         <%
                                             def latestAssertion = oc.user_assertions[0] // Get the first (latest) assertion
                                         %>
                                         <b><g:message code="annotations.comment"/></b><br/>
+
                                         <i>${StringUtils.abbreviate(latestAssertion.comment, 100)}</i>
-                                        <br>-<b>${latestAssertion.userDisplayName}
-                                            <g:if test="${latestAssertion.created}">,&nbsp;
+                                        <br>-<b>${latestAssertion.userDisplayName}<g:if test="${latestAssertion.created}">,&nbsp;
                                                     <%
                                                         try {
                                                             def parsedDate = Date.parse("yyyy-MM-dd'T'HH:mm:ss'Z'", latestAssertion.created)

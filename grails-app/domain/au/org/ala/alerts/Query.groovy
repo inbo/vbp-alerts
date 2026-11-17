@@ -21,11 +21,9 @@ class Query {
 
     String idJsonPath   //the json path for producing a list of IDs for change detection
     String recordJsonPath
+    static hasMany = [notifications: Notification, queryResults: QueryResult, propertyPaths: PropertyPath]
 
     transient String listId //species list id
-    transient Date lastChecked // Date when the last execution performed
-
-    static hasMany = [notifications: Notification, queryResults: QueryResult, propertyPaths: PropertyPath]
 
     static constraints = {
         description nullable: true, maxSize: 400, widget: 'textarea'
@@ -54,12 +52,68 @@ class Query {
         return name
     }
 
+    /**
+     * Count the number of ACTIVE subscribers for this query, optionally filtered by frequency.
+     * @param frequency
+     * @return
+     */
     int countSubscribers(String frequency = null) {
         if (frequency) {
-            return notifications.collect { it.user }.count(it -> it.frequency?.name == frequency)
+            return notifications.findAll { it.enabled }.collect { it.user }.count(it -> it.frequency?.name == frequency)
         } else {
-            return notifications.collect { it.user }.count()
+            return notifications.findAll { it.enabled }.collect { it.user }.count()
         }
+    }
+
+    /**
+     * return ACTIVE subscribers and NOT locked user for this query, optionally filtered by frequency.
+     * @param frequency
+     * @return
+     */
+     def getSubscribers(String frequency = null) {
+        def subscribers
+
+        if (frequency) {
+            subscribers = notifications.findAll { it.enabled }.collect { it.user }.findAll(it -> it.frequency?.name == frequency)
+        } else {
+            subscribers= notifications.findAll { it.enabled }.collect { it.user }
+        }
+        return subscribers
+    }
+
+    /**
+     * return ACTIVE subscribers for this query, optionally filtered by frequency.
+     * @param frequency
+     * @return
+     */
+    def getInactiveSubscribers(String frequency = null) {
+        def subscribers
+
+        if (frequency) {
+            subscribers = notifications.findAll { !it.enabled }.collect { it.user }.findAll(it -> it.frequency?.name )
+        } else {
+            subscribers= notifications.findAll { !it.enabled }.collect { it.user }
+        }
+        return subscribers
+    }
+
+    String getSubscriberEmails(String frequency = null) {
+        def maxEmails = 10
+        def emailList
+
+        if (frequency) {
+            def users = notifications.findAll { it.enabled }.collect { it.user }.findAll(it -> it.frequency?.name == frequency)
+            emailList = users.collect(it -> it.email)
+        } else {
+            def users = notifications.findAll { it.enabled }.collect { it.user }
+            emailList = users.collect(it -> it.email)
+        }
+
+        def subscribers = emailList.take(maxEmails).join('; ') // Take first 10
+        if (emailList.size() > maxEmails) {
+            subscribers += ' ......'
+        }
+        return subscribers
     }
 
     String getListId() {
@@ -96,5 +150,33 @@ class Query {
      */
     QueryResult getQueryResult(String frequency) {
         return this.queryResults.find { it.frequency.isFrequency(frequency) }
+    }
+
+    boolean isBiosecurity() {
+        return this.emailTemplate == '/email/biosecurity'
+    }
+
+    /**
+     * Is this the 'My Annotations' query belonging to the given user?
+     *
+     * The stored queryPath has more parameters after the user id
+     * (e.g. /occurrences/search?fq=assertion_user_id:1234&dir=desc&pageSize=20&...), so this is a
+     * prefix match.
+     */
+    boolean isMyAnnotation(String userId) {
+        if (!userId || !queryPath) {
+            return false
+        }
+        String prefix = '/occurrences/search?fq=assertion_user_id:' + userId
+        return queryPath.toLowerCase().startsWith(prefix.toLowerCase()) &&
+                emailTemplate?.equalsIgnoreCase('/email/myAnnotations')
+    }
+
+    /**
+     * Is this the 'My Annotations' query?
+     * @return
+     */
+    boolean isMyAnnotations() {
+        return emailTemplate?.equalsIgnoreCase('/email/myAnnotations')
     }
 }

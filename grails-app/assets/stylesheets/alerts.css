@@ -16,13 +16,15 @@
 *= require grails
 */
 
-.queryActions {
-    padding:20px;
-}
+/*:root {*/
+/*    --bs-body-font-family: 'Roboto', sans-serif;*/
+/*    !*--bs-body-font-size: 0.875rem;   !* 14px *!*!*/
+/*    !*--bs-body-line-height: 1.428;*!*/
+/*}*/
 
-#userFrequency {
-    width:auto;
-}
+/*#userFrequency {*/
+/*    width:auto;*/
+/*}*/
 
 #customQueriesHdr {
     margin-top: 20px;
@@ -30,54 +32,92 @@
     padding-bottom: 0px;
 }
 
-.icon {
-    opacity:0.6;
-    filter:alpha(opacity=60);
+/*.icon {*/
+/*    opacity:0.6;*/
+/*    filter:alpha(opacity=60);*/
+/*}*/
+
+/*#content .btn-danger:hover, #content .btn-danger:focus {*/
+/*    color: #fff;*/
+/*}*/
+
+/*.btn-primary {*/
+/*    color: #fff;              !* black text *!*/
+/*}*/
+
+.btn-outline-disable {
+    background-color: #fff;
+    border: 1px solid gray;
+    color: gray;
+    cursor: not-allowed; /* optional: show disabled cursor */
 }
 
-#content .btn-danger:hover, #content .btn-danger:focus {
-    color: #fff;
+/* prevent hover/focus/active changes */
+.btn-outline-disable:hover,
+.btn-outline-disable:focus,
+.btn-outline-disable:active {
+    background-color: #fff !important;
+    border-color: gray !important;
+    color: gray !important;
+    box-shadow: none !important;
 }
 
-#content h3 {
-    font-weight: 500;
+/* biosecurity */
+.badge-outline-primary {
+    color: #c44d34;          /* text in your primary color */
+    background-color: #fff;  /* white background */
+    border: 1px solid #c44d34;
+    padding: 3px 7px;        /* match Bootstrap badge spacing */
+    border-radius: 10px;     /* same rounded look as .badge */
 }
 
-#content h3 select {
-    font-size: 18px;
+.badge-outline-secondary {
+    color: #c44d34;          /* text in your primary color */
+    background-color: #fff;  /* white background */
+    border: 1px solid gray;
+    padding: 3px 7px;        /* match Bootstrap badge spacing */
+    border-radius: 10px;     /* same rounded look as .badge */
 }
 
-a.btn-ala {
-    font-weight: 500;
-}
+/*#content h3 {*/
+/*    font-weight: 500;*/
+/*}*/
+
+/*#content h3 select {*/
+/*    font-size: 18px;*/
+/*}*/
+
+/*a.btn-ala {*/
+/*    font-weight: 500;*/
+/*}*/
 
 #main ul {
     list-style-type: disc;
 }
 
-#admin-functions li {
-    margin: 5px 0;
-}
+/*#admin-functions li {*/
+/*    margin: 5px 0;*/
+/*}*/
 
-.biosecurityTableColumn {
-    width: 20%;
-}
+/*.biosecurityTableColumn {*/
+/*    width: 20%;*/
+/*}*/
 
-.bioscecrurity-padding {
-    padding: 20px 0px 20px 0px;
-}
+/*.bioscecrurity-padding {*/
+/*    padding: 20px 0px 20px 0px;*/
+/*}*/
 
-.more-button {
-    background-color: #C44D34;
-    cursor: pointer;
-    border: 0;
-    border-radius: 10px;
-    color: white;
-    padding: 11px 19px;
-    text-align: center;
-    display: inline-block;
-    font-size: 16px;
-}
+/*.more-button {*/
+/*    background-color: #C44D34;*/
+/*    cursor: pointer;*/
+/*    border: 0;*/
+/*    border-radius: 10px;*/
+/*    color: white;*/
+/*    padding: 11px 19px;*/
+/*    text-align: center;*/
+/*    display: inline-block;*/
+/*    font-size: 16px;*/
+/*}*/
 
 .badge-info {
     background-color: #17a2b8; /* Adjust the color as needed */
@@ -93,8 +133,27 @@ a.btn-ala {
     padding-left: 3.5ch;
 }
 
+.font-warning {
+    color: #c44d34;
+}
+
 .badge-primary {
     background-color: #c44d34; /* Red color */
+    color: #fff; /* White text */
+}
+
+.badge-success {
+    background-color: #5cb85c; /* Red color */
+    color: #fff; /* White text */
+}
+
+.badge-warning {
+    background-color: #f0ad4e; /* Red color */
+    color: #fff; /* White text */
+}
+
+.badge-danger {
+    background-color: #d9534f; /* Red color */
     color: #fff; /* White text */
 }
 
@@ -118,4 +177,171 @@ a.btn-ala {
     cursor: pointer;
 }
 
+.autowrap-popover{
+    word-break: break-word !important; /* Break long words inside list items */
+}
+
+
+.nav-tabs .nav-link{
+    color:  #000000;
+}
+.nav-tabs .nav-link.active{
+    color:  #c44d34;
+    pointer-events: none;
+}
+
+.nav-tabs .nav-link:hover{
+    color:  #c44d34;
+    border-color: transparent;
+}
+
+/*.nav-tabs > li > a:hover {*/
+/*    background-color: #c44d34;*/
+/*    color: #ffffff;*/
+/*}*/
+
+/*.nav-tabs > li > a {*/
+/*    color: grey;*/
+/*    background-color: transparent;*/
+/*}*/
+
+/*.tab-content {*/
+/*    border-color: #dee2e6;  !* content border color *!*/
+/*    background-color: #fff;  !* default white content *!*/
+/*}*/
+
+.nav-tabs {
+    border-color: #dee2e6;
+}
+
+.tab-content > .tab-pane {
+    border: 1px solid;
+    border-top: none;
+    border-color: #dee2e6;
+    padding: 15px;
+    background-color: #fff;
+}
+
+.mt-20 {
+    margin-top: 20px;
+}
+
+/**
+ Starting with .tt is for Typehead
+ */
+.tt-menu {
+    background-color: #fff;        /* white like card body */
+    border: 1px solid #dee2e6;    /* light gray border */
+    border-radius: .25rem;         /* rounded corners */
+    box-shadow: 0 .25rem .5rem rgba(0,0,0,.1); /* optional shadow */
+    padding: 0.25rem 0;           /* spacing for items */
+    width: 100% !important;
+}
+.tt-suggestion {
+    padding: 0.25rem 0.75rem;
+    cursor: pointer;
+}
+.tt-suggestion:hover {
+    background-color: #e9ecef;     /* highlight on hover */
+}
+
+/* typeahead wraps the input in a span, which breaks a Bootstrap .input-group unless we
+   restore the flex sizing / rounded corners of the wrapped input */
+.input-group > .twitter-typeahead {
+    flex: 1 1 auto;
+    width: 1%;
+}
+.input-group > .twitter-typeahead .tt-input,
+.input-group > .twitter-typeahead .tt-hint {
+    width: 100%;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+/**
+For admin page layout
+ */
+.two-col-masonry {
+    column-count: 2;
+    column-gap: 2rem;   /* increase this value */
+}
+
+.two-col-masonry > .box {
+    break-inside: avoid;
+    margin-bottom: 1rem;   /* space between stacked boxes */
+}
+
+/* Mobile: 1 column */
+@media (max-width: 768px) {
+    .two-col-masonry {
+        column-count: 1;
+    }
+}
+
+/* todo: confirm with common-ui*/
+.card {
+    background-color: #f5f5f5;
+}
+
+/**
+ * g:paginate renders plain <a class="step">/<span class="currentStep"> elements, which Bootstrap 5
+ * does not style (it expects ul.pagination > li.page-item > a.page-link). Style them here using the
+ * ALA primary colour (#c44d34), as used by .badge-primary / .badge-outline-primary above.
+ */
+.pagination {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .25rem;
+    align-items: center;
+}
+
+.pagination .step,
+.pagination .currentStep,
+.pagination .prevLink,
+.pagination .nextLink {
+    display: inline-block;
+    padding: .375rem .75rem;
+    border: 1px solid #dee2e6;
+    border-radius: .25rem;
+    color: #c44d34;
+    text-decoration: none;
+    line-height: 1.25;
+}
+
+.pagination .step:hover,
+.pagination .prevLink:hover,
+.pagination .nextLink:hover {
+    background-color: #f7ece9;    /* light tint of the primary colour */
+    border-color: #c44d34;
+    color: #c44d34;
+    text-decoration: none;
+}
+
+.pagination .step:focus,
+.pagination .prevLink:focus,
+.pagination .nextLink:focus {
+    outline: none;
+    box-shadow: 0 0 0 .2rem rgba(196, 77, 52, .25);
+}
+
+.pagination .currentStep {
+    background-color: #c44d34;
+    border-color: #c44d34;
+    color: #fff;
+}
+
+.pagination .disabled {
+    color: #6c757d;
+    pointer-events: none;
+    background-color: #f8f9fa;
+    border-color: #dee2e6;
+}
+
+.form-check-input {
+    cursor: pointer;
+}
+
+.cursor-pointer {
+    cursor: pointer;
+}
 

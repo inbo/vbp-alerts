@@ -1,14 +1,13 @@
-<html>
+<html xmlns="http://www.w3.org/1999/html">
 <head>
     <title>Notification service | ${grailsApplication.config.skin.orgNameLong}</title>
     <meta name="layout" content="${grailsApplication.config.skin.layout}"/>
     <meta name="breadcrumb" content="Admin functions" />
-    <meta name="breadcrumbParent" content="${grailsApplication.config.grails.serverURL?:'/'},Alerts" />
+    <meta name="breadcrumbParent" content="${grailsApplication.config.grails.serverURL?:'/notification/myAlerts'},My alerts" />
     <asset:stylesheet href="alerts.css"/>
 </head>
 
 <body>
-<h1>Admin functions - Alert service</h1>
 
 <g:if test="${message || flash.message}">
     <div class="alert alert-info">${message}${flash.message}</div>
@@ -16,77 +15,234 @@
 <g:if test="${flash.errorMessage}">
     <div class="alert alert-danger">${flash.errorMessage}</div>
 </g:if>
-
 <div id="admin-functions">
-    <div class="panel-heading">
-        <h3>User Management</h3>
-        <ul>
-            <li><g:link controller="admin" action="updateUserEmails">Update user emails with CAS</g:link> - synchronise alerts user database with  users from CAS.</li>
-            <li class="controller"><a href="${request.contextPath}/admin/user">Manage alerts for users (find user)</a> - Find user(s) and manage their subscriptions.</li>
-        </ul>
+    <div class="row mb-4 align-items-center">
+        <div class="col-auto" ><i class="fa-solid fa-user-gear fa-2x text-primary"></i></div>
+        <div class="col-auto">
+            <h2> Admin Dashboard</h2>
+            <div class="text-muted">
+            Manage users, alerts and system settings.
+            </div>
+        </div>
+    </div>
+    <div class="two-col-masonry">
+        <div class="box">
+            <div class="shadow card card-body ">
+                <div class="fw-bold fs-5"><i class="fa-regular fa-calendar-days text-primary"></i> Manage Scheduling</div>
+                <div>
+                    <small class="text-muted ps-4">Control when alerts are sent</small>
+                </div>
+             <div class="mt-3">
+                 <g:link controller="quartz">View scheduling</g:link> <small class="text-muted ms-2"> - Run and/or reschedule alerts.</small>
+             </div>
+            </div>
+        </div>
+
+        <div class="box">
+            <div class="shadow card card-body ">
+                <div class="fw-bold fs-5"><i class="fa fa-id-card text-primary"></i> Alerts Management</div>
+                <div>
+                    <small class="text-muted ps-4">Manage user accounts and subscriptions</small>
+                </div>
+                <div class="mt-3">
+                    <a href="${request.contextPath}/admin/user" id="user-management">Manage alerts for users ( email required )</a>
+                    <small class="text-muted ms-2"> - find user(s) and manage their subscriptions.</small>
+                </div>
+
+                <div class="mt-3">
+                    <g:link controller="query" action="list" params="[max: 50]">List queries</g:link>
+                    <small class="text-muted ms-2"> - browse all queries, with basic management functions.</small>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="box">
+            <div class="shadow card card-body">
+                <div class="fw-bold fs-5"><i class="fa-solid fa-bug text-primary"></i> Advanced Alerts Tools </div>
+                <div>
+                    <small class="text-muted ps-4">Inspect, debug and test-run alerts</small>
+                </div>
+                <div class="mt-3">
+                    <div><g:link controller="admin" action="query" class="btn btn-outline-primary">Alert Diagnostics &amp; Management</g:link>  <small class="text-muted ms-2">- manage and simulate all available alerts.</small></div>
+                </div>
+                <hr>
+                <div class="mt-2">
+                    <div class="d-flex flex-wrap align-items-center">
+                        Simulating a
+                        <select id="frequencySimulated" class="form-select w-auto mx-2">
+                            <option value="hourly">Hourly</option>
+                            <option value="daily" selected>Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
+                        </select>
+                        Scheduled Job
+                        <a class="btn btn-primary ms-2" id="simulatedFrequencyLink" href="${g.createLink(controller: 'admin', action: 'triggerQueriesByFrequency', params: [frequency: 'daily'])}" target="_blank">Run</a>
+                        <label>  <g:checkBox name="testMode" class="mx-2" checked="${grailsApplication.config.testMode ?: false}" />  Email me a copy </label>
+                    </div>
+                    <div class="mt-2 text-muted">
+                        <i>- This will not update database records. Subscriber emails are <b>NOT</b> sent in Production or Test environments; they are only sent via the local SMTP server in Development. If you check "Email me a copy", a copy will be sent to you.</i>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="box" data-name="biosecurity">
+            <div class="shadow card card-body">
+                <div class="fw-bold fs-5"><i class="fa-solid fa-shield-halved text-primary"></i> BioSecurity</div>
+                <div>
+                    <small class="text-muted ps-4">Manage Biosecurity alerts</small>
+                </div>
+
+                <div class="mt-2">
+                    <a href="${request.contextPath}/biosecurity">Manage BioSecurity alerts</a><small class="text-muted ms-2"> - Add, update, remove or reschedule BioSecurity alerts and users.</small>
+                </div>
+                <hr/>
+                <div class="mt-2">
+                    <div class="d-flex flex-wrap align-items-center">
+                        Simulate Biosecurity alerts from
+                        <label for="daysBefore" class="visually-hidden">Days before the current date</label>
+                        <select id="daysBefore" class="form-select w-auto mx-2">
+                            <option value="7">1 week</option>
+                            <option value="14" selected>2 weeks</option>
+                            <option value="30">1 month</option>
+                            <option value="180">6 months</option>
+                        </select>
+                        before the current date.
+
+                        <a class="btn btn-primary ms-2" id="dryRunBiosecurityLink"
+                           href="${g.createLink(namespace: 'biosecurity', controller: 'admin', action: 'dryRun', params: [daysBefore: 14])}"
+                           target="_blank">Run</a>
+                    </div>
+
+                    <div class="mt-2 text-muted">
+                        <i>- This is a dry run. It will not update the Alerts database or send emails to subscribers. A copy of the generated results will be sent only to you.</i>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+
+        <div class="box">
+            <div class="shadow card card-body">
+                <div class="fw-bold fs-5"><i class="fa-solid fa-wrench text-primary"></i> Maintenance and fixes</div>
+
+                <div >
+                    <g:link controller="admin" action="updateUserEmails">Update user emails with CAS</g:link>
+                    <small class="text-muted ms-2"> - synchronise alerts user database with users from CAS.</small>
+                </div>
+
+                <div>
+                    <small class="text-muted ps-4">Repair broken data</small>
+                </div>
+                <div class="mt-2">
+                    <g:link controller="admin" action="repairNotificationsWithoutUnsubscribeToken">
+                        Fix missing tokens in notification unsubscribe links
+                    </g:link>
+                    <small class="text-muted ms-2">
+                        – Repairs notification unsubscribe links that are missing tokens
+                    </small>
+                </div>
+                <div>
+                    <g:link controller="admin" action="repairUsersWithoutUnsubscribeToken">
+                        Fix user unsubscribe-all links with missing tokens
+                    </g:link>
+                    <small class="text-muted ms-2">
+                        – Repairs links used to unsubscribe a user from all notifications
+                    </small>
+                </div>
+                <div>
+                    <g:link controller="admin" action="deleteOrphanAlerts">
+                        Delete orphaned queries
+                    </g:link>
+                    <small class="text-muted ms-2">
+                        – Removes queries without notifications or subscriptions
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        <div class="box">
+            <div class="shadow card card-body">
+                <h5><i class="fa-solid fa-gear text-primary"></i> Application Management </h5>
+                <div>
+                    <plugin:isAvailable name="alaAdminPlugin">
+                        <g:link controller="alaAdmin" action="index">ALA admin plugin page </g:link> <small class="text-muted ms-2"> - system message, app config functions, build info</small>
+                    </plugin:isAvailable>
+                </div>
+            </div>
+        </div>
+
+        <div class="box">
+            <div class="shadow card card-body">
+                <h5><i class="fa-regular fa-table text-primary"></i> Tests</h5>
+                <div>
+                    <g:link controller="admin" action="sendTestEmail">Send an email to yourself</g:link> <small class="text-muted ms-2"> - Test if emails server works </small>
+                    <br/>
+                    <g:link controller="webservice" action="test">Create some Alerts examples</g:link> <small class="text-muted ms-2"> - Test if some Alerts template work </small>
+                    <br/>
+                    <a href="${request.contextPath}/admin/previewBlogAlerts">Preview alerts for the five most recent blogs</a>
+                </div>
+            </div>
+        </div>
+
+
     </div>
 
-    <div class="panel-heading">
-        <h3>Alert and Query Management</h3>
-        <ul>
-            <li><g:link controller="notification" action="myAlerts">View my alerts</g:link> - View my current subscriptions.</li>
-            <li><g:link controller="query" action="list">View list of alert types</g:link>  - View the list of all available custom and default alerts.</li>
-            <li class="controller"><g:link controller="admin" action="notificationReport">
-                View each alert type with counts for users</g:link> - View the list of all available custom and default alerts with user subscription count.</li>
 
-            <li><g:link controller="admin" action="deleteOrphanAlerts">Delete orphaned queries</g:link> - Remove queries no longer associated with Alert Notification/Subscription.</li>
-            <li><g:link controller="admin" action="dryRunAllQueriesForFrequency" params="[frequency: 'daily']" target="_blank">Debug daily alerts</g:link> - Dry-run of daily alerts to determine if emails will be triggered on the next schedule. </li>
-            <li class="admin"><a class="btn btn-info" href="${request.contextPath}/admin/query">Debug and Test</a> - For testers and developers</li>
-        </ul>
-        <h4>Fix empty/invalid notification_token</h4>
-        <ul>
-            <li><g:link controller="admin" action="repairNotificationsWithoutUnsubscribeToken"> Fix empty notification_token values in Notification table (unsubscribe links with '?token=NULL')</g:link></li>
-            <li><g:link controller="admin" action="repairUsersWithoutUnsubscribeToken"> Fix empty notification_token values in user table (unsubscribe all links with '?token=NULL')</g:link></li>
-        </ul>
-    </div>
-    <div class="panel-heading">
-        <h3>Manage Scheduling</h3>
-        <ul>
-            <li class="controller"><g:link controller="quartz">View scheduling</g:link> - Run and/or reschedule alerts.</li>
-        </ul>
-    </div>
 
-%{--    <div class="panel-heading">--}%
-%{--        <h3>Email Management </h3>--}%
+
+
+%{--    <div class="mb-4">--}%
+%{--        <h4>Email Management </h4>--}%
 %{--        <ul>--}%
 %{--            <li class="controller"><g:link controller="admin" action="createBulkEmailForRegisteredUsers">--}%
 %{--                Ad hoc bulk email to registered users</g:link> - Create and send custom email to registered users.</li>--}%
 %{--            <li><g:link controller="admin" action="sendTestEmail">Send test email to yourself (tests server can send emails)</g:link>- Empty alert email to current user.</li>--}%
 %{--        </ul>--}%
 %{--    </div>--}%
+    <div class="row mb-4">
 
-    <div class="panel-heading">
-        <h3>BioSecurity Alerts</h3>
-        <ul>
-            <li class="controller"><a href="${request.contextPath}/admin/biosecurity">Manage BioSecurity alerts</a> - Add, update, or remove BioSecurity alerts and users.</li>
-        </ul>
-    </div>
-
-    <g:if test="${grailsApplication.config.getProperty('useBlogsAlerts', Boolean, true)}">
-        <div class="panel-heading">
-            <h3>Alerts for News and Blogs</h3>
-            <ul>
-                <li class="controller"><a href="${request.contextPath}/admin/previewBlogAlerts">Preview alerts for the five most recent blogs</a></li>
-            </ul>
-        </div>
-    </g:if>
-
-    <div class="panel-heading">
-        <h3>Application Management </h3>
-        <ul>
-            <plugin:isAvailable name="alaAdminPlugin">
-                <li style="margin-top:1em;"><g:link controller="alaAdmin" action="index">ALA admin plugin page (system message, app config functions, build info)</g:link>
-            </plugin:isAvailable>
-        </ul>
     </div>
 
 
+    <div class="row mb-4">
 
+    </div>
 </div>
+
+<script>
+    $(document).ready(function() {
+        // Update the link simulating the Quartz job
+        function updateSimulationQueryLink() {
+            let selectedValue = $('#frequencySimulated').val();
+            let testModeChecked = $('[name=testMode]').is(':checked'); // Check if the checkbox is checked
+            let queryLink = $('#simulatedFrequencyLink');
+
+            let url = "${g.createLink(controller: 'admin', action: 'triggerQueriesByFrequency')}";
+            url += "?frequency=" + selectedValue;
+            if (testModeChecked) {
+                url += "&testMode=true"; // Append testMode only if checked
+            }
+            queryLink.attr('href', url);
+        }
+
+        $('#frequencySimulated, [name=testMode]').change(updateSimulationQueryLink);
+
+        // Keep the Biosecurity dry run link in sync with the selected period.
+        let $daysBefore = $('#daysBefore');
+        let $dryRunLink = $('#dryRunBiosecurityLink');
+
+        function updateDryRunBiosecurityLink() {
+            let url = "${g.createLink(namespace: 'biosecurity', controller: 'admin', action: 'dryRun')}";
+            $dryRunLink.attr('href', url + "?daysBefore=" + $daysBefore.val());
+        }
+
+        $daysBefore.change(updateDryRunBiosecurityLink);
+        updateDryRunBiosecurityLink();
+    });
+</script>
 </body>
 </html>

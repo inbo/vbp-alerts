@@ -1,70 +1,124 @@
+/**
+ * todo reviews methods to check if they are used still
+ */
+
 package au.org.ala.alerts
 
 import au.org.ala.web.AlaSecured
 import grails.converters.JSON
-import io.micronaut.http.HttpStatus
+import org.springframework.http.HttpStatus
 
 class NotificationController {
 
     def notificationService
     def emailService
     def userService
-    def authService
     def diffService
     def queryResultService
 
-    static allowedMethods = [save: "POST", update: "POST", delete: "POST"]
+    static allowedMethods = [save: "POST", update: "POST", delete: ["GET", "POST"]]
 
-    def myalerts = { redirect(action: "myAlerts", params: params) }
 
+    /**
+     * Shows the logged-in user's own alerts.
+     *
+     * The returned map is used as the model and Grails renders the view matching the action name
+     * by convention (grails-app/views/notification/myAlerts.gsp), so no explicit render() is needed.
+     */
     @AlaSecured(value = ['ROLE_USER'], redirectUri = "/")
-    def myAlerts = {
+    def myAlerts() {
         User user = userService.getUser()
-        log.debug('Viewing my alerts :  ' + user)
-        userService.getUserAlertsConfig(user)
+        user ? notificationService.myAlerts(user) : [:]
     }
 
-    def addMyAlert = {
+
+    def addMyAlert() {
         def user = getUser()
 
         if (!user) {
-            response.status = HttpStatus.NOT_FOUND.code
-            response.sendError(HttpStatus.NOT_FOUND.code, "Unrecognised user")
-        } else {
-            notificationService.addAlertForUser(user, Long.valueOf(params.id))
-            return null
+            render status: HttpStatus.NOT_FOUND.value(), text: "Unrecognised user"
+            return
         }
+
+        notificationService.addAlertForUser(user, params.id as Long)
+        render([success: true] as JSON)
     }
 
-    def deleteMyAlert = {
+
+    // Deletes an alert for the currently logged-in user
+    def deleteMyAlert() {
+        // Get the current user
         def user = getUser()
 
         if (!user) {
-            response.status = HttpStatus.NOT_FOUND.code
-            response.sendError(HttpStatus.NOT_FOUND.code, "Unrecognised user")
+            // Return 404 if user is not found
+            response.status = HttpStatus.NOT_FOUND.value()
+            response.sendError(HttpStatus.NOT_FOUND.value(), "Unrecognised user")
+            return
+        }
+
+        // Delete the alert for this user
+        notificationService.deleteAlertForUser(user, params.id as Long)
+        render([success: true] as JSON)
+    }
+
+    /*
+
+     * Enables an alert for the currently logged-in user
+     * @param id The ID of the QUERY
+     */
+    def enableAlert() {
+        def user = getUser()
+        if (!user) {
+            render status: HttpStatus.NOT_FOUND.value(), text: "Unrecognised user"
+            return
+        }
+        notificationService.enableAlertForUser(user, params.id as Long)
+        render([success: true] as JSON)
+    }
+    /*
+     * Enables an alert for the currently logged-in user
+     * @param id The ID of the QUERY
+     */
+    def disableAlert() {
+        def user = getUser()
+        if (!user) {
+            render status: HttpStatus.NOT_FOUND.value(), text: "Unrecognised user"
+            return
+        }
+        notificationService.disableAlertForUser(user, params.id as Long)
+        render([success: true] as JSON)
+    }
+
+    def subscribeMyAnnotation()  {
+        def user = getUser()
+        try {
+            def result = notificationService.subscribeMyAnnotation(user)
+            render (result as JSON)
+        } catch (ignored) {
+            response.sendError(HttpStatus.INTERNAL_SERVER_ERROR.value(), "failed to subscribe to 'my annotation' alert for user " + user?.getUserId())
+        }
+    }
+
+    def unsubscribeMyAnnotation() {
+        def user = getUser()
+        try {
+            def done = notificationService.unsubscribeMyAnnotation(user)
+            render ([success: done] as JSON)
+        } catch (ignored) {
+            response.sendError(HttpStatus.INTERNAL_SERVER_ERROR.value(), "failed to unsubscribe 'my annotation' alert for user " + user?.getUserId())
+        }
+    }
+
+    @AlaSecured(value = ['ROLE_ADMIN'])
+    def delete(Long id) {
+        // id is data bound as a Long, so a non numeric path variable (e.g. /notification/delete/abc)
+        // arrives as null and is rejected here instead of being passed on to GORM
+        if (id) {
+            notificationService.delete(id)
+            render ([success: true] as JSON)
         } else {
-            notificationService.deleteAlertForUser(user, Long.valueOf(params.id))
-        }
-    }
-
-    def subscribeMyAnnotation = {
-        def user = getUser()
-        try {
-            notificationService.subscribeMyAnnotation(user)
-            render ([success: true] as JSON)
-        } catch (ignored) {
-            response.sendError(HttpStatus.INTERNAL_SERVER_ERROR.code, "failed to subscribe to 'my annotation' alert for user " + user?.getUserId())
-        }
-
-    }
-
-    def unsubscribeMyAnnotation = {
-        def user = getUser()
-        try {
-            notificationService.unsubscribeMyAnnotation(user)
-            render ([success: true] as JSON)
-        } catch (ignored) {
-            response.sendError(HttpStatus.INTERNAL_SERVER_ERROR.code, "failed to unsubscribe 'my annotation' alert for user " + user?.getUserId())
+            render([success: false, message: "No id provided"] as JSON)
         }
     }
 
@@ -91,74 +145,64 @@ class NotificationController {
         }
         redirect(action: 'myAlerts')
     }
-
+    /**
+     * Resolves the user a request applies to: the user identified by the 'userId' param when it is
+     * supplied (the admin managing someone else's alerts), otherwise the logged-in user.
+     *
+     * Permission to use 'userId' is enforced by NotificationInterceptor before the action runs, so
+     * this method never writes to the response - it only returns null when the user cannot be found,
+     * which each action reports as a 404.
+     *
+     * @return the user to act on, or null if no such user exists
+     */
     private User getUser() {
-        if (authService.userInRole("ROLE_ADMIN")) {
-            return userService.getUserById(params.userId)
-        } else {
-            return userService.getUser()
-        }
+        params.userId ? userService.getUserById(params.userId) : userService.getUser()
     }
 
     def changeFrequency = {
         def user = getUser()
         log.debug("Changing frequency to: " + params.frequency + " for user ${user}")
         notificationService.updateFrequency(user, params.frequency)
-        return null
-    }
-
-    /**
-     * todo check if it works?
-     */
-    def checkNow = {
-        Notification notification = Notification.get(params.id)
-        // no such method
-        boolean sendUpdateEmail = notificationService.executeQuery(notification.query)?.hasChanged
-        if (sendUpdateEmail) {
-            emailService.sendNotificationEmail(notification)
-        }
-        redirect(action: "show", params: params)
+        render([success: true] as JSON)
     }
 
     /**
      * Debug the algorithm used to detect changes in the latest result / previous result
      *
      */
-
     def evaluateChangeDetectionAlgorithm = {
         def query = Query.get(params.queryId)
 
         def queryResult = queryResultService.get(params.queryResultId)
-        //NOTE: this is a hack since the lastResult will be copied into the previousResult in RefreshProperties method
-        //We need to hack the current result with previousResult.
-        def lastResult = queryResult.decompress(queryResult.lastResult)
-        queryResult.lastResult = queryResult.previousResult
-        //Assume ONLY one property value
-        queryResult.propertyValues?[0]?.currentValue = queryResult.propertyValues?[0]?.previousValue
+        // Since the previous and current results are loaded from database,
+        // the diffService.getRecordChanges() should be called to get the new records
+        queryResult.newRecords = diffService.diff(queryResult)
+        queryResult.succeeded = true
+        boolean hasChanged =  queryResult.newRecords.size() > 0
+        if (hasChanged != queryResult.hasChanged) {
+            log.error("Warning: Calculated hasChanged flag is not consistent with result in database. Calculated: ${hasChanged}, in database: ${queryResult.hasChanged}")
+        }
 
-        notificationService.refreshProperties(queryResult, lastResult)
-        boolean hasChanged = diffService.hasChanged(queryResult)
+        def emailSent = false
+        if (params.emailMe) {
+            User currentUser = userService.getUser()
+            if (currentUser) {
+                def recipient =
+                        [email: currentUser.email, userUnsubToken: currentUser.unsubscribeToken, notificationUnsubToken: '']
+                //Pseudo Frequency
+                Frequency fre = Frequency.findByName("weekly")
+                emailService.sendGroupNotification(queryResult, fre, [recipient])
+                emailSent = true
+            } else {
+                log.warn("No user found to send email to.")
+            }
+        }
 
-        //Update the results
-        queryResult.previousResult = queryResult.lastResult
-        queryResult.lastResult =  queryResult.compress(lastResult)
-
-        def records = notificationService.collectUpdatedRecords(queryResult)
-        def results = ["hasChanged": hasChanged, "brief": queryResult.brief(),  "records": records]
+        def results = ["hasChanged": hasChanged, emailSent: emailSent, totalRecords: queryResult.totalRecords, "brief": queryResult.brief(),  "records": queryResult.newRecords]
         render results as JSON
     }
 
-    def index = {
-        //if is ADMIN, then index page
-        //else redirect to /notification/myAlerts
-        if (authService.userInRole("ADMIN")) {
-            redirect(action: "admin")
-        } else {
-            redirect(action: "myAlerts")
-        }
-    }
-
-    def admin = {
-
+    def index(){
+        redirect(action: "myAlerts")
     }
 }

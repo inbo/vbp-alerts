@@ -39,6 +39,11 @@
                                 <g:message code="biocache.occurrences.records.update.title" args="${[totalRecords]}"/>
                             </g:else>
                         </div>
+                        <div>
+                            <g:if test="${moreInfo?.queryUrlUIUsed}">
+                                <a class="btn info-button" href="${moreInfo.queryUrlUIUsed}"><g:message code="biocache.occurrences.viewall"/></a>
+                            </g:if>
+                        </div>
                     </td>
                 </tr>
             <!-- Records Section -->
@@ -51,22 +56,27 @@
                             <tr style="vertical-align: top;">
                                 <td style="width: 37%">
                                     <g:if test="${oc.scientificName?: oc.vernacularName ?: oc.raw_raw_scientificName}">
-                                        <strong>${i+1}. <em><a href="${occurrencelink}">${oc.scientificName?: oc.vernacularName ?: oc.raw_raw_scientificName}</a></em></strong>
+                                        <strong>${i+1}. <em><a href="${occurrencelink}" style="color: #003A70;text-decoration: none;font-family: 'flanders-sans', sans-serif;font-size: 16px;line-height: 1.5;">${oc.scientificName?: oc.vernacularName ?: oc.raw_raw_scientificName}</a></em></strong>
                                     </g:if>
                                     <p style="padding-left: 15px;">
-                                        <g:if test="${oc.taxonRankID > 5000}"><i></g:if>
-                                        ${oc.scientificName}<br/>
-                                        <g:if test="${oc.taxonRankID > 5000}"></i></g:if>
-                                        ${oc.stateProvince}<br/>
-                                        <g:message code="alerts.family" args="${[oc.family]}"/><br/>
-                                        <g:if test="${oc.dataProviderName}">
-                                            <g:message code="alerts.source" args="${[oc.dataProviderName]}"/>
+                                        <g:if test="${oc.vernacularName}">
+                                            ${oc.vernacularName}<br/>
+                                        </g:if>
+                                        <g:if test="${oc.stateProvince}">
+                                            ${oc.stateProvince}<br/>
+                                        </g:if>
+                                        <g:if test="${oc.family}">
+                                            <g:message code="alerts.family" args="${[oc.family]}"/><br/>
+                                        </g:if>
+                                        <g:if test="${oc.dataResourceName}">
+                                            <g:message code="alerts.source" args="${[oc.dataResourceName]}"/>
                                         </g:if>
                                     </p>
                                 </td>
                                 <td class="annotation" nowrap="nowrap" style="width: 30%">
                                     <g:if test="${oc.eventDate}">
                                         <g:message code="alerts.date.created" args="${[new SimpleDateFormat("dd MMM yyyy").format(oc.eventDate)]}"/><br/>
+
                                     </g:if>
                                 </td>
                                 <td style="width: 33%; text-align: center; vertical-align: middle;" >

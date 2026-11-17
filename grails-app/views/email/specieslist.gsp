@@ -24,7 +24,7 @@
                 </tr>
                 <!-- Header -->
                 <tr>
-                    <td height="120" style="color:white;background-color:rgba(128, 128, 128, 0.85);padding: 20px 10px 20px 10px;text-align: center;font-family: 'flanders-sans', sans-serif;font-size: 16px;line-height: 1.5;background-image:url(${grailsApplication.config.grails.serverURL}/assets/email/kluut.jpg);background-position: top center;background-size: cover;background-repeat: no-repeat">
+                    <td background="${grailsApplication.config.grails.serverURL}/assets/email/kluut.jpg" width="620" height="120" style="color:white;background-color:rgba(128, 128, 128, 0.85);padding: 20px 10px 20px 10px;text-align: center;font-family: 'flanders-sans', sans-serif;font-size: 16px;line-height: 1.5;background-image:url(${grailsApplication.config.grails.serverURL}/assets/email/kluut.jpg);background-position: top center;background-size: cover;background-repeat: no-repeat">
                         <h1 style="font-size: 24px; color: #fff;"><g:message code="alerts.email.heading" args="${[query.name]}"/></h1>
                         <p style="font-size: 16px; color: #fff;"><strong>${new SimpleDateFormat("dd MMM yyyy").format(new Date())}</strong></p>
                     </td>
@@ -39,6 +39,7 @@
                                 <g:message code="specieslists.updates.title" args="${[totalRecords]}"/>
                             </g:else>
                         </div>
+
                     </td>
                 </tr>
             <!-- Records Section -->
@@ -49,7 +50,7 @@
                             <table style="width: 100%">
                                 <tr style="vertical-align: top;">
                                     <td style="width: 70%">
-                                                <strong>${i+1}.<a href="${oclink}" style="color: #003A70;font-family: 'flanders-sans', sans-serif;font-size: 16px;line-height: 1.5;"> <em>${oc.listName}</em> </a></strong>
+                                                <strong>${i+1}. <a href="${oclink}" style="color: #003A70;font-family: 'flanders-sans', sans-serif;font-size: 16px;line-height: 1.5;"><em>${oc.listName}</em> </a></strong>
                                         <p style="padding-left: 15px;">
                                             <%
                                                 // Initialize a list to collect tags
@@ -58,8 +59,9 @@
                                                 if (oc.isThreatened) tags << "Threatened"
                                                 if (oc.isInvasive) tags << "Invasive"
                                             %>
-
-                                            Tags: ${tags ? tags.join(', ') : ''} <br/>
+                                            <g:if test="${tags.size() > 0}">
+                                                Tags: ${tags.join(', ')} <br/>
+                                            </g:if>
 
                                             <g:if test="${oc.listType}">
                                                 Type: ${oc.listType}<br/>
